@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const authRoutes = require("./routes/authRoutes");
 const playerRoutes = require("./routes/playerRoutes");
 const adminCardRoutes = require("./routes/adminCardRoutes");
+const playRoutes = require("./routes/playRoutes");
 const protocolMiddleware = require("./middleware/protocolMiddleware");
 
 const app = express();
@@ -28,6 +29,7 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/players", playerRoutes);
 app.use("/api/admin", adminCardRoutes);
+app.use("/api/play", playRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

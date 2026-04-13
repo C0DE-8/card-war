@@ -25,13 +25,17 @@ router.post(
       const {
         name,
         type,
+        element_type,
         power,
         magic,
         skill,
+        cost,
         effect,
         value,
         rarity_id,
-        description
+        description,
+        is_starter_card,
+        starter_weight
       } = req.body;
 
       if (!name || !type || !rarity_id || !description) {
@@ -77,15 +81,29 @@ router.post(
         const numericPower = Number(power);
         const numericMagic = Number(magic);
         const numericSkill = Number(skill);
+        const numericCost = Number(cost);
+        const normalizedElementType = typeof element_type === "string" ? element_type.trim().toLowerCase() : "";
+        const numericStarterWeight =
+          starter_weight !== undefined ? Number(starter_weight) : 1;
+        const starterCardFlag =
+          typeof is_starter_card === "string"
+            ? is_starter_card === "true"
+            : !!is_starter_card;
 
         if (
+          !normalizedElementType ||
           !isNonNegativeNumber(numericPower) ||
           !isNonNegativeNumber(numericMagic) ||
-          !isNonNegativeNumber(numericSkill)
+          !isNonNegativeNumber(numericSkill) ||
+          !Number.isInteger(numericCost) ||
+          numericCost < 1 ||
+          !Number.isInteger(numericStarterWeight) ||
+          numericStarterWeight < 1
         ) {
           return res.status(400).json({
             success: false,
-            message: "Character cards require non-negative power, magic, and skill values."
+            message:
+              "Character cards require element_type, non-negative power/magic/skill, cost >= 1, and starter_weight >= 1."
           });
         }
 
@@ -94,25 +112,33 @@ router.post(
           (
             name,
             type,
+            element_type,
             power,
             magic,
             skill,
+            cost,
             rarity_id,
             description,
+            is_starter_card,
+            starter_weight,
             image_path,
             image_filename,
             image_mime_type,
             is_active
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
           [
             name,
             type,
+            normalizedElementType,
             numericPower,
             numericMagic,
             numericSkill,
+            numericCost,
             numericRarityId,
             description,
+            starterCardFlag,
+            numericStarterWeight,
             imagePath,
             imageFilename,
             imageMimeType
@@ -130,6 +156,13 @@ router.post(
 
       if (type === "ability") {
         const numericValue = Number(value);
+        const numericCost = cost !== undefined ? Number(cost) : 1;
+        const numericStarterWeight =
+          starter_weight !== undefined ? Number(starter_weight) : 1;
+        const starterCardFlag =
+          typeof is_starter_card === "string"
+            ? is_starter_card === "true"
+            : !!is_starter_card;
 
         if (!effect || !ALLOWED_EFFECTS.includes(effect)) {
           return res.status(400).json({
@@ -144,29 +177,48 @@ router.post(
             message: "Ability cards require a non-negative value."
           });
         }
+        if (!Number.isInteger(numericCost) || numericCost < 1) {
+          return res.status(400).json({
+            success: false,
+            message: "Ability cards require cost >= 1."
+          });
+        }
+        if (!Number.isInteger(numericStarterWeight) || numericStarterWeight < 1) {
+          return res.status(400).json({
+            success: false,
+            message: "starter_weight must be an integer >= 1."
+          });
+        }
 
         const [result] = await db.execute(
           `INSERT INTO cards
           (
             name,
             type,
+            element_type,
+            cost,
             effect,
             value,
             rarity_id,
             description,
+            is_starter_card,
+            starter_weight,
             image_path,
             image_filename,
             image_mime_type,
             is_active
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+          VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
           [
             name,
             type,
+            numericCost,
             effect,
             numericValue,
             numericRarityId,
             description,
+            starterCardFlag,
+            numericStarterWeight,
             imagePath,
             imageFilename,
             imageMimeType
@@ -215,14 +267,18 @@ router.put(
 
       const {
         name,
+        element_type,
         power,
         magic,
         skill,
+        cost,
         effect,
         value,
         rarity_id,
         description,
-        is_active
+        is_active,
+        is_starter_card,
+        starter_weight
       } = req.body;
 
       const [existingCards] = await db.execute(
@@ -241,12 +297,24 @@ router.put(
 
       const updatedName = name ?? existingCard.name;
       const updatedDescription = description ?? existingCard.description;
+      const updatedElementType =
+        existingCard.type === "character"
+          ? (element_type ?? existingCard.element_type ?? "").toString().trim().toLowerCase()
+          : null;
       const updatedIsActive =
         typeof is_active === "string"
           ? is_active === "true"
           : typeof is_active === "boolean"
             ? is_active
             : !!existingCard.is_active;
+      const updatedStarterCard =
+        typeof is_starter_card === "string"
+          ? is_starter_card === "true"
+          : typeof is_starter_card === "boolean"
+            ? is_starter_card
+            : !!existingCard.is_starter_card;
+      const updatedStarterWeight =
+        starter_weight !== undefined ? Number(starter_weight) : Number(existingCard.starter_weight || 1);
 
       const updatedRarityId =
         rarity_id !== undefined ? Number(rarity_id) : existingCard.rarity_id;
@@ -301,15 +369,23 @@ router.put(
           magic !== undefined ? Number(magic) : Number(existingCard.magic);
         const updatedSkill =
           skill !== undefined ? Number(skill) : Number(existingCard.skill);
+        const updatedCost =
+          cost !== undefined ? Number(cost) : Number(existingCard.cost);
 
         if (
+          !updatedElementType ||
           !isNonNegativeNumber(updatedPower) ||
           !isNonNegativeNumber(updatedMagic) ||
-          !isNonNegativeNumber(updatedSkill)
+          !isNonNegativeNumber(updatedSkill) ||
+          !Number.isInteger(updatedCost) ||
+          updatedCost < 1 ||
+          !Number.isInteger(updatedStarterWeight) ||
+          updatedStarterWeight < 1
         ) {
           return res.status(400).json({
             success: false,
-            message: "Character stats cannot be negative."
+            message:
+              "Character cards require element_type, non-negative stats, cost >= 1, and starter_weight >= 1."
           });
         }
 
@@ -317,11 +393,15 @@ router.put(
           `UPDATE cards
            SET
              name = ?,
+             element_type = ?,
              power = ?,
              magic = ?,
              skill = ?,
+             cost = ?,
              rarity_id = ?,
              description = ?,
+             is_starter_card = ?,
+             starter_weight = ?,
              image_path = ?,
              image_filename = ?,
              image_mime_type = ?,
@@ -329,11 +409,15 @@ router.put(
            WHERE id = ?`,
           [
             updatedName,
+            updatedElementType,
             updatedPower,
             updatedMagic,
             updatedSkill,
+            updatedCost,
             updatedRarityId,
             updatedDescription,
+            updatedStarterCard,
+            updatedStarterWeight,
             imagePath,
             imageFilename,
             imageMimeType,
@@ -345,6 +429,8 @@ router.put(
         const updatedEffect = effect ?? existingCard.effect;
         const updatedValue =
           value !== undefined ? Number(value) : Number(existingCard.value);
+        const updatedCost =
+          cost !== undefined ? Number(cost) : Number(existingCard.cost);
 
         if (!updatedEffect || !ALLOWED_EFFECTS.includes(updatedEffect)) {
           return res.status(400).json({
@@ -359,15 +445,24 @@ router.put(
             message: "Ability value cannot be negative."
           });
         }
+        if (!Number.isInteger(updatedCost) || updatedCost < 1) {
+          return res.status(400).json({
+            success: false,
+            message: "Ability cards require cost >= 1."
+          });
+        }
 
         await db.execute(
           `UPDATE cards
            SET
              name = ?,
+             cost = ?,
              effect = ?,
              value = ?,
              rarity_id = ?,
              description = ?,
+             is_starter_card = ?,
+             starter_weight = ?,
              image_path = ?,
              image_filename = ?,
              image_mime_type = ?,
@@ -375,10 +470,13 @@ router.put(
            WHERE id = ?`,
           [
             updatedName,
+            updatedCost,
             updatedEffect,
             updatedValue,
             updatedRarityId,
             updatedDescription,
+            updatedStarterCard,
+            updatedStarterWeight,
             imagePath,
             imageFilename,
             imageMimeType,
@@ -482,13 +580,17 @@ router.get("/cards", authenticateToken, requireAdmin, async (req, res) => {
         c.id,
         c.name,
         c.type,
+        c.element_type,
         c.power,
         c.magic,
         c.skill,
+        c.cost,
         c.effect,
         c.value,
         c.description,
         c.is_active,
+        c.is_starter_card,
+        c.starter_weight,
         c.created_at,
         c.updated_at,
         c.image_path,
