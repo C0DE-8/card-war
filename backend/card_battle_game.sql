@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost
--- Generation Time: Apr 13, 2026 at 04:06 PM
+-- Generation Time: Apr 14, 2026 at 07:16 PM
 -- Server version: 10.4.28-MariaDB
 -- PHP Version: 8.2.4
 
@@ -204,7 +204,8 @@ CREATE TABLE `players` (
 --
 
 INSERT INTO `players` (`id`, `username`, `email`, `password`, `level`, `exp`, `rp`, `coins`, `gems`, `wins`, `losses`, `created_at`, `updated_at`, `is_admin`) VALUES
-(1, 'light', '8amlight@gmail.com', '$2b$10$7fRTgyHF7ckGAhAxT.ZxVO/L/Mmo0J0DbDi30SJkXXa3f842VDqjS', 1, 0, 50, 1000, 20, 0, 0, '2026-04-13 02:43:15', '2026-04-13 03:58:21', 1);
+(1, 'light', '8amlight@gmail.com', '$2b$10$7fRTgyHF7ckGAhAxT.ZxVO/L/Mmo0J0DbDi30SJkXXa3f842VDqjS', 1, 0, 50, 1000, 20, 0, 0, '2026-04-13 02:43:15', '2026-04-13 03:58:21', 1),
+(2, 'habibi', 'habibi@gmail.com', '$2b$10$t/n3TL1PuFDVWuarVvOhxepDvGICaRAfqw7Yqe8eGaNEPD.xjXEzi', 1, 0, 50, 1000, 20, 0, 0, '2026-04-13 14:50:27', '2026-04-13 14:50:27', 0);
 
 -- --------------------------------------------------------
 
@@ -219,6 +220,22 @@ CREATE TABLE `player_cards` (
   `quantity` int(11) NOT NULL DEFAULT 1,
   `acquired_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `player_cards`
+--
+
+INSERT INTO `player_cards` (`id`, `player_id`, `card_id`, `quantity`, `acquired_at`) VALUES
+(1, 2, 9, 1, '2026-04-13 14:50:27'),
+(2, 2, 5, 1, '2026-04-13 14:50:27'),
+(3, 2, 2, 1, '2026-04-13 14:50:27'),
+(4, 2, 1, 1, '2026-04-13 14:50:27'),
+(5, 2, 3, 1, '2026-04-13 14:50:27'),
+(6, 2, 4, 1, '2026-04-13 14:50:27'),
+(7, 2, 7, 1, '2026-04-13 14:50:28'),
+(8, 2, 8, 1, '2026-04-13 14:50:28'),
+(9, 2, 10, 1, '2026-04-13 14:50:28'),
+(10, 2, 6, 1, '2026-04-13 14:50:28');
 
 -- --------------------------------------------------------
 
@@ -235,6 +252,13 @@ CREATE TABLE `player_decks` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `player_decks`
+--
+
+INSERT INTO `player_decks` (`id`, `player_id`, `name`, `is_active`, `created_at`, `updated_at`) VALUES
+(1, 2, 'Starter Deck', 1, '2026-04-13 14:50:27', '2026-04-13 14:50:27');
+
 -- --------------------------------------------------------
 
 --
@@ -248,6 +272,22 @@ CREATE TABLE `player_deck_cards` (
   `slot_number` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `player_deck_cards`
+--
+
+INSERT INTO `player_deck_cards` (`id`, `deck_id`, `card_id`, `slot_number`, `created_at`) VALUES
+(1, 1, 9, 1, '2026-04-13 14:50:27'),
+(2, 1, 5, 2, '2026-04-13 14:50:27'),
+(3, 1, 2, 3, '2026-04-13 14:50:27'),
+(4, 1, 1, 4, '2026-04-13 14:50:27'),
+(5, 1, 3, 5, '2026-04-13 14:50:27'),
+(6, 1, 4, 6, '2026-04-13 14:50:28'),
+(7, 1, 7, 7, '2026-04-13 14:50:28'),
+(8, 1, 8, 8, '2026-04-13 14:50:28'),
+(9, 1, 10, 9, '2026-04-13 14:50:28'),
+(10, 1, 6, 10, '2026-04-13 14:50:28');
 
 -- --------------------------------------------------------
 
@@ -416,25 +456,25 @@ ALTER TABLE `card_element_advantages`
 -- AUTO_INCREMENT for table `players`
 --
 ALTER TABLE `players`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `player_cards`
 --
 ALTER TABLE `player_cards`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `player_decks`
 --
 ALTER TABLE `player_decks`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `player_deck_cards`
 --
 ALTER TABLE `player_deck_cards`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `rarities`
