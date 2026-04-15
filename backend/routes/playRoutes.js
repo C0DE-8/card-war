@@ -72,6 +72,54 @@ async function getActiveDeckByPlayerId(playerId) {
   return rows[0] || null;
 }
 
+async function getActiveDeckByPlayerIdTx(connection, playerId) {
+  const [rows] = await connection.execute(
+    `SELECT id, player_id, name, is_active
+     FROM player_decks
+     WHERE player_id = ? AND is_active = 1
+     ORDER BY id DESC
+     LIMIT 1`,
+    [playerId]
+  );
+  return rows[0] || null;
+}
+
+async function getExistingUnfinishedMatchByPlayerIdTx(connection, playerId) {
+  const [rows] = await connection.execute(
+    `SELECT id
+     FROM battle_matches
+     WHERE status IN ('waiting', 'in_progress')
+       AND (player_one_id = ? OR player_two_id = ?)
+     ORDER BY updated_at DESC, id DESC
+     LIMIT 1`,
+    [playerId, playerId]
+  );
+  return rows[0] || null;
+}
+
+async function getOldestWaitingMatchTx(connection, playerId) {
+  const [rows] = await connection.execute(
+    `SELECT id
+     FROM battle_matches
+     WHERE status = 'waiting'
+       AND player_one_id <> ?
+       AND (player_two_id IS NULL OR player_two_id = 0)
+     ORDER BY created_at ASC, id ASC
+     LIMIT 1 FOR UPDATE`,
+    [playerId]
+  );
+  return rows[0] || null;
+}
+
+async function ensureRoundOneExistsTx(connection, matchId) {
+  await connection.execute(
+    `INSERT INTO battle_rounds (match_id, round_number, status)
+     VALUES (?, 1, 'power')
+     ON DUPLICATE KEY UPDATE status = status`,
+    [matchId]
+  );
+}
+
 async function getRoundMoves(roundId) {
   const [moves] = await db.execute(
     `SELECT
@@ -254,50 +302,73 @@ router.post("/match/create", authenticateToken, async (req, res) => {
   let connection;
 
   try {
-    const playerOneId = req.user.id;
-    const opponentId = Number(req.body.opponent_id);
-
-    if (!opponentId || Number.isNaN(opponentId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid opponent_id is required."
-      });
-    }
-
-    if (opponentId === playerOneId) {
-      return res.status(400).json({
-        success: false,
-        message: "You cannot create a match against yourself."
-      });
-    }
+    const playerId = req.user.id;
 
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    const [opponentRows] = await connection.execute(
-      `SELECT id FROM players WHERE id = ? LIMIT 1`,
-      [opponentId]
-    );
-    if (opponentRows.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({
-        success: false,
-        message: "Opponent player not found."
-      });
-    }
-
-    const playerOneDeck = await getActiveDeckByPlayerId(playerOneId);
-    const playerTwoDeck = await getActiveDeckByPlayerId(opponentId);
-
-    if (!playerOneDeck || !playerTwoDeck) {
+    const playerDeck = await getActiveDeckByPlayerIdTx(connection, playerId);
+    if (!playerDeck) {
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: "Both players must have an active deck before creating a match."
+        message: "You must have an active deck before matchmaking."
       });
     }
 
-    const [result] = await connection.execute(
+    const existingMatch = await getExistingUnfinishedMatchByPlayerIdTx(connection, playerId);
+    if (existingMatch) {
+      await connection.commit();
+      const matchSummary = await getMatchSummary(existingMatch.id);
+      return res.status(200).json({
+        success: true,
+        message: "You already have an active or waiting match.",
+        ...matchSummary
+      });
+    }
+
+    let joinedMatchId = null;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const waitingMatch = await getOldestWaitingMatchTx(connection, playerId);
+      if (!waitingMatch) {
+        break;
+      }
+
+      const [updateResult] = await connection.execute(
+        `UPDATE battle_matches
+         SET
+           player_two_id = ?,
+           player_two_deck_id = ?,
+           status = 'in_progress',
+           current_round_number = 1,
+           updated_at = NOW()
+         WHERE id = ?
+           AND status = 'waiting'
+           AND (player_two_id IS NULL OR player_two_id = 0)`,
+        [playerId, playerDeck.id, waitingMatch.id]
+      );
+
+      if (updateResult.affectedRows === 0) {
+        continue;
+      }
+
+      joinedMatchId = waitingMatch.id;
+      await ensureRoundOneExistsTx(connection, joinedMatchId);
+      break;
+    }
+
+    if (joinedMatchId) {
+      await connection.commit();
+      const matchSummary = await getMatchSummary(joinedMatchId);
+      return res.status(200).json({
+        success: true,
+        message: "Joined open match successfully.",
+        ...matchSummary
+      });
+    }
+
+    const [createResult] = await connection.execute(
       `INSERT INTO battle_matches
        (
          player_one_id,
@@ -307,23 +378,17 @@ router.post("/match/create", authenticateToken, async (req, res) => {
          status,
          current_round_number
        )
-       VALUES (?, ?, ?, ?, 'in_progress', 1)`,
-      [playerOneId, opponentId, playerOneDeck.id, playerTwoDeck.id]
+       VALUES (?, NULL, ?, NULL, 'waiting', 1)`,
+      [playerId, playerDeck.id]
     );
-    const matchId = result.insertId;
-
-    await connection.execute(
-      `INSERT INTO battle_rounds (match_id, round_number, status)
-       VALUES (?, 1, 'power')`,
-      [matchId]
-    );
+    const createdMatchId = createResult.insertId;
 
     await connection.commit();
 
-    const matchSummary = await getMatchSummary(matchId);
+    const matchSummary = await getMatchSummary(createdMatchId);
     return res.status(201).json({
       success: true,
-      message: "Match created successfully.",
+      message: "Open match created. Waiting for opponent.",
       ...matchSummary
     });
   } catch (error) {
@@ -442,6 +507,13 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "You are not a participant in this match."
+      });
+    }
+    if (match.status === "waiting") {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Match is waiting for an opponent."
       });
     }
     if (match.status !== "in_progress") {
