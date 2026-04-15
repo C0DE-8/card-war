@@ -29,6 +29,14 @@ router.post(
         power,
         magic,
         skill,
+        base_card_level,
+        card_level_cap,
+        power_min,
+        power_max,
+        magic_min,
+        magic_max,
+        skill_min,
+        skill_max,
         cost,
         effect,
         value,
@@ -78,9 +86,28 @@ router.post(
       const imageMimeType = req.file ? req.file.mimetype : null;
 
       if (type === "character") {
-        const numericPower = Number(power);
-        const numericMagic = Number(magic);
-        const numericSkill = Number(skill);
+        const numericBaseCardLevel =
+          base_card_level !== undefined ? Number(base_card_level) : 1;
+        const numericCardLevelCap =
+          card_level_cap !== undefined ? Number(card_level_cap) : 11;
+
+        const numericPower = power !== undefined ? Number(power) : Number(power_max ?? power_min);
+        const numericMagic = magic !== undefined ? Number(magic) : Number(magic_max ?? magic_min);
+        const numericSkill = skill !== undefined ? Number(skill) : Number(skill_max ?? skill_min);
+
+        const resolvedPowerMin =
+          power_min !== undefined ? Number(power_min) : numericPower;
+        const resolvedPowerMax =
+          power_max !== undefined ? Number(power_max) : numericPower;
+        const resolvedMagicMin =
+          magic_min !== undefined ? Number(magic_min) : numericMagic;
+        const resolvedMagicMax =
+          magic_max !== undefined ? Number(magic_max) : numericMagic;
+        const resolvedSkillMin =
+          skill_min !== undefined ? Number(skill_min) : numericSkill;
+        const resolvedSkillMax =
+          skill_max !== undefined ? Number(skill_max) : numericSkill;
+
         const numericCost = Number(cost);
         const normalizedElementType = typeof element_type === "string" ? element_type.trim().toLowerCase() : "";
         const numericStarterWeight =
@@ -92,9 +119,22 @@ router.post(
 
         if (
           !normalizedElementType ||
+          !Number.isInteger(numericBaseCardLevel) ||
+          numericBaseCardLevel < 1 ||
+          !Number.isInteger(numericCardLevelCap) ||
+          numericCardLevelCap < numericBaseCardLevel ||
           !isNonNegativeNumber(numericPower) ||
           !isNonNegativeNumber(numericMagic) ||
           !isNonNegativeNumber(numericSkill) ||
+          !isNonNegativeNumber(resolvedPowerMin) ||
+          !isNonNegativeNumber(resolvedPowerMax) ||
+          resolvedPowerMax < resolvedPowerMin ||
+          !isNonNegativeNumber(resolvedMagicMin) ||
+          !isNonNegativeNumber(resolvedMagicMax) ||
+          resolvedMagicMax < resolvedMagicMin ||
+          !isNonNegativeNumber(resolvedSkillMin) ||
+          !isNonNegativeNumber(resolvedSkillMax) ||
+          resolvedSkillMax < resolvedSkillMin ||
           !Number.isInteger(numericCost) ||
           numericCost < 1 ||
           !Number.isInteger(numericStarterWeight) ||
@@ -103,7 +143,7 @@ router.post(
           return res.status(400).json({
             success: false,
             message:
-              "Character cards require element_type, non-negative power/magic/skill, cost >= 1, and starter_weight >= 1."
+              "Character cards require element_type, valid base_card_level/card_level_cap, non-negative stats, valid min/max ranges, cost >= 1, and starter_weight >= 1."
           });
         }
 
@@ -116,6 +156,14 @@ router.post(
             power,
             magic,
             skill,
+            base_card_level,
+            card_level_cap,
+            power_min,
+            power_max,
+            magic_min,
+            magic_max,
+            skill_min,
+            skill_max,
             cost,
             rarity_id,
             description,
@@ -126,7 +174,7 @@ router.post(
             image_mime_type,
             is_active
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
           [
             name,
             type,
@@ -134,6 +182,14 @@ router.post(
             numericPower,
             numericMagic,
             numericSkill,
+            numericBaseCardLevel,
+            numericCardLevelCap,
+            resolvedPowerMin,
+            resolvedPowerMax,
+            resolvedMagicMin,
+            resolvedMagicMax,
+            resolvedSkillMin,
+            resolvedSkillMax,
             numericCost,
             numericRarityId,
             description,
@@ -271,6 +327,14 @@ router.put(
         power,
         magic,
         skill,
+        base_card_level,
+        card_level_cap,
+        power_min,
+        power_max,
+        magic_min,
+        magic_max,
+        skill_min,
+        skill_max,
         cost,
         effect,
         value,
@@ -363,20 +427,74 @@ router.put(
       }
 
       if (existingCard.type === "character") {
+        const updatedBaseCardLevel =
+          base_card_level !== undefined
+            ? Number(base_card_level)
+            : Number(existingCard.base_card_level ?? 1);
+        const updatedCardLevelCap =
+          card_level_cap !== undefined
+            ? Number(card_level_cap)
+            : Number(existingCard.card_level_cap ?? 11);
+
         const updatedPower =
-          power !== undefined ? Number(power) : Number(existingCard.power);
+          power !== undefined
+            ? Number(power)
+            : Number(existingCard.power ?? existingCard.power_max ?? existingCard.power_min ?? 0);
         const updatedMagic =
-          magic !== undefined ? Number(magic) : Number(existingCard.magic);
+          magic !== undefined
+            ? Number(magic)
+            : Number(existingCard.magic ?? existingCard.magic_max ?? existingCard.magic_min ?? 0);
         const updatedSkill =
-          skill !== undefined ? Number(skill) : Number(existingCard.skill);
+          skill !== undefined
+            ? Number(skill)
+            : Number(existingCard.skill ?? existingCard.skill_max ?? existingCard.skill_min ?? 0);
+
+        const updatedPowerMin =
+          power_min !== undefined
+            ? Number(power_min)
+            : Number(existingCard.power_min ?? updatedPower);
+        const updatedPowerMax =
+          power_max !== undefined
+            ? Number(power_max)
+            : Number(existingCard.power_max ?? updatedPower);
+        const updatedMagicMin =
+          magic_min !== undefined
+            ? Number(magic_min)
+            : Number(existingCard.magic_min ?? updatedMagic);
+        const updatedMagicMax =
+          magic_max !== undefined
+            ? Number(magic_max)
+            : Number(existingCard.magic_max ?? updatedMagic);
+        const updatedSkillMin =
+          skill_min !== undefined
+            ? Number(skill_min)
+            : Number(existingCard.skill_min ?? updatedSkill);
+        const updatedSkillMax =
+          skill_max !== undefined
+            ? Number(skill_max)
+            : Number(existingCard.skill_max ?? updatedSkill);
+
         const updatedCost =
           cost !== undefined ? Number(cost) : Number(existingCard.cost);
 
         if (
           !updatedElementType ||
+          !Number.isInteger(updatedBaseCardLevel) ||
+          updatedBaseCardLevel < 1 ||
+          !Number.isInteger(updatedCardLevelCap) ||
+          updatedCardLevelCap < updatedBaseCardLevel ||
           !isNonNegativeNumber(updatedPower) ||
           !isNonNegativeNumber(updatedMagic) ||
           !isNonNegativeNumber(updatedSkill) ||
+          !isNonNegativeNumber(updatedPowerMin) ||
+          !isNonNegativeNumber(updatedPowerMax) ||
+          updatedPowerMax < updatedPowerMin ||
+          !isNonNegativeNumber(updatedMagicMin) ||
+          !isNonNegativeNumber(updatedMagicMax) ||
+          updatedMagicMax < updatedMagicMin ||
+          !isNonNegativeNumber(updatedSkillMin) ||
+          !isNonNegativeNumber(updatedSkillMax) ||
+          updatedSkillMax < updatedSkillMin ||
           !Number.isInteger(updatedCost) ||
           updatedCost < 1 ||
           !Number.isInteger(updatedStarterWeight) ||
@@ -385,7 +503,7 @@ router.put(
           return res.status(400).json({
             success: false,
             message:
-              "Character cards require element_type, non-negative stats, cost >= 1, and starter_weight >= 1."
+              "Character cards require element_type, valid base_card_level/card_level_cap, non-negative stats, valid min/max ranges, cost >= 1, and starter_weight >= 1."
           });
         }
 
@@ -397,6 +515,14 @@ router.put(
              power = ?,
              magic = ?,
              skill = ?,
+             base_card_level = ?,
+             card_level_cap = ?,
+             power_min = ?,
+             power_max = ?,
+             magic_min = ?,
+             magic_max = ?,
+             skill_min = ?,
+             skill_max = ?,
              cost = ?,
              rarity_id = ?,
              description = ?,
@@ -413,6 +539,14 @@ router.put(
             updatedPower,
             updatedMagic,
             updatedSkill,
+            updatedBaseCardLevel,
+            updatedCardLevelCap,
+            updatedPowerMin,
+            updatedPowerMax,
+            updatedMagicMin,
+            updatedMagicMax,
+            updatedSkillMin,
+            updatedSkillMax,
             updatedCost,
             updatedRarityId,
             updatedDescription,
@@ -584,6 +718,14 @@ router.get("/cards", authenticateToken, requireAdmin, async (req, res) => {
         c.power,
         c.magic,
         c.skill,
+        c.base_card_level,
+        c.card_level_cap,
+        c.power_min,
+        c.power_max,
+        c.magic_min,
+        c.magic_max,
+        c.skill_min,
+        c.skill_max,
         c.cost,
         c.effect,
         c.value,

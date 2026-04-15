@@ -7,6 +7,56 @@ const router = express.Router();
 const STAT_SEQUENCE = ["power", "magic", "skill"];
 const ROUND_TARGET = 2;
 
+function rollRandomInt(minValue, maxValue) {
+  const min = Number(minValue);
+  const max = Number(maxValue);
+
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return 0;
+  }
+
+  const low = Math.ceil(Math.min(min, max));
+  const high = Math.floor(Math.max(min, max));
+
+  if (high < low) {
+    return low;
+  }
+
+  return Math.floor(Math.random() * (high - low + 1)) + low;
+}
+
+function computeEffectiveStatRange(cardRow, progressRow, statType) {
+  const fixedStat = Number(cardRow?.[statType] ?? 0);
+  const baseMinRaw = cardRow?.[`${statType}_min`];
+  const baseMaxRaw = cardRow?.[`${statType}_max`];
+
+  const baseMin = Number.isFinite(Number(baseMinRaw)) ? Number(baseMinRaw) : fixedStat;
+  const baseMax = Number.isFinite(Number(baseMaxRaw)) ? Number(baseMaxRaw) : fixedStat;
+
+  const minBonus = progressRow ? Number(progressRow[`${statType}_min_bonus`] ?? 0) : 0;
+  const maxBonus = progressRow ? Number(progressRow[`${statType}_max_bonus`] ?? 0) : 0;
+
+  let effectiveMin = baseMin + (Number.isFinite(minBonus) ? minBonus : 0);
+  let effectiveMax = baseMax + (Number.isFinite(maxBonus) ? maxBonus : 0);
+
+  if (!Number.isFinite(effectiveMin) || !Number.isFinite(effectiveMax)) {
+    effectiveMin = fixedStat;
+    effectiveMax = fixedStat;
+  }
+
+  if (effectiveMax < effectiveMin) {
+    effectiveMin = fixedStat;
+    effectiveMax = fixedStat;
+  }
+
+  return {
+    base_min: baseMin,
+    base_max: baseMax,
+    effective_min: effectiveMin,
+    effective_max: effectiveMax
+  };
+}
+
 async function getActiveDeckByPlayerId(playerId) {
   const [rows] = await db.execute(
     `SELECT id, player_id, name, is_active
@@ -28,6 +78,7 @@ async function getRoundMoves(roundId) {
       m.stat_type,
       m.card_id,
       m.base_value,
+      m.rolled_value,
       m.cost_value,
       m.advantage_boost,
       m.final_value,
@@ -476,7 +527,31 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
     );
     const existingDecay = decayRows.length > 0 ? Number(decayRows[0].total_decay) : 0;
 
-    const baseValue = Number(selectedCard[currentStat] || 0);
+    const [progressRows] = await connection.execute(
+      `SELECT
+        pc.id AS player_card_id,
+        pcp.id AS player_card_progress_id,
+        pcp.current_level,
+        pcp.power_min_bonus,
+        pcp.power_max_bonus,
+        pcp.magic_min_bonus,
+        pcp.magic_max_bonus,
+        pcp.skill_min_bonus,
+        pcp.skill_max_bonus
+       FROM player_cards pc
+       LEFT JOIN player_card_progress pcp
+         ON pcp.player_card_id = pc.id
+        AND pcp.player_id = pc.player_id
+        AND pcp.card_id = pc.card_id
+       WHERE pc.player_id = ? AND pc.card_id = ?
+       LIMIT 1`,
+      [playerId, cardId]
+    );
+
+    const progressRow = progressRows.length > 0 ? progressRows[0] : null;
+    const statRange = computeEffectiveStatRange(selectedCard, progressRow, currentStat);
+    const baseValue = Number(statRange.effective_max || 0);
+    const rolledValue = rollRandomInt(statRange.effective_min, statRange.effective_max);
 
     await connection.execute(
       `INSERT INTO battle_round_moves
@@ -486,6 +561,7 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
          stat_type,
          card_id,
          base_value,
+         rolled_value,
          cost_value,
          advantage_boost,
          final_value,
@@ -493,15 +569,16 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
          did_decay_apply,
          submission_order
        )
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?)`,
       [
         round.id,
         playerId,
         currentStat,
         cardId,
         baseValue,
+        rolledValue,
         Number(selectedCard.cost || 1),
-        baseValue - existingDecay,
+        rolledValue - existingDecay,
         submissionOrder
       ]
     );
@@ -512,6 +589,7 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
         m.player_id,
         m.card_id,
         m.base_value,
+        m.rolled_value,
         m.cost_value,
         m.submission_order,
         c.name AS card_name,
@@ -597,8 +675,8 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
       }
     }
 
-    const firstFinalValue = Number(firstMove.base_value) - firstDecay + firstAdvantageBoost;
-    const secondFinalValue = Number(secondMove.base_value) - secondDecay + secondAdvantageBoost;
+    const firstFinalValue = Number(firstMove.rolled_value) - firstDecay + firstAdvantageBoost;
+    const secondFinalValue = Number(secondMove.rolled_value) - secondDecay + secondAdvantageBoost;
 
     let winningMove = firstMove;
     let losingMove = secondMove;
@@ -744,6 +822,7 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
           card_id: firstMove.card_id,
           card_name: firstMove.card_name,
           base_value: Number(firstMove.base_value),
+          rolled_value: Number(firstMove.rolled_value),
           decay_value: firstDecay,
           boost_value: firstAdvantageBoost,
           final_value: firstFinalValue
@@ -753,6 +832,7 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
           card_id: secondMove.card_id,
           card_name: secondMove.card_name,
           base_value: Number(secondMove.base_value),
+          rolled_value: Number(secondMove.rolled_value),
           decay_value: secondDecay,
           boost_value: secondAdvantageBoost,
           final_value: secondFinalValue

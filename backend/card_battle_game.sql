@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost
--- Generation Time: Apr 14, 2026 at 07:16 PM
+-- Generation Time: Apr 15, 2026 at 02:27 PM
 -- Server version: 10.4.28-MariaDB
 -- PHP Version: 8.2.4
 
@@ -92,6 +92,7 @@ CREATE TABLE `battle_round_moves` (
   `stat_type` enum('power','magic','skill') NOT NULL,
   `card_id` int(11) NOT NULL,
   `base_value` int(11) NOT NULL,
+  `rolled_value` int(11) NOT NULL DEFAULT 0,
   `cost_value` int(11) NOT NULL DEFAULT 1,
   `advantage_boost` int(11) NOT NULL DEFAULT 0,
   `final_value` int(11) NOT NULL,
@@ -113,11 +114,19 @@ CREATE TABLE `cards` (
   `type` varchar(20) NOT NULL,
   `element_type` varchar(30) DEFAULT NULL,
   `power` int(11) DEFAULT 0,
+  `power_min` int(11) DEFAULT NULL,
+  `power_max` int(11) DEFAULT NULL,
   `magic` int(11) DEFAULT 0,
+  `magic_min` int(11) DEFAULT NULL,
+  `magic_max` int(11) DEFAULT NULL,
   `skill` int(11) DEFAULT 0,
+  `skill_min` int(11) DEFAULT NULL,
+  `skill_max` int(11) DEFAULT NULL,
   `cost` int(11) NOT NULL DEFAULT 1,
   `effect` varchar(50) DEFAULT NULL,
   `value` int(11) DEFAULT 0,
+  `card_level_cap` int(11) NOT NULL DEFAULT 11,
+  `base_card_level` int(11) NOT NULL DEFAULT 1,
   `rarity_id` int(11) NOT NULL,
   `description` text DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
@@ -134,17 +143,17 @@ CREATE TABLE `cards` (
 -- Dumping data for table `cards`
 --
 
-INSERT INTO `cards` (`id`, `name`, `type`, `element_type`, `power`, `magic`, `skill`, `cost`, `effect`, `value`, `rarity_id`, `description`, `is_active`, `is_starter_card`, `starter_weight`, `created_at`, `updated_at`, `image_path`, `image_filename`, `image_mime_type`) VALUES
-(1, 'Aqua Knight', 'character', 'water', 82, 76, 70, 3, NULL, 0, 1, 'Balanced water fighter.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL),
-(2, 'Flame Burst', 'character', 'fire', 88, 69, 65, 4, NULL, 0, 1, 'Aggressive fire striker.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL),
-(3, 'Stone Guard', 'character', 'rock', 80, 50, 72, 3, NULL, 0, 1, 'Stable rock defender.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL),
-(4, 'Wind Fang', 'character', 'wind', 68, 74, 87, 2, NULL, 0, 1, 'Fast wind skill card.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL),
-(5, 'Shadow Veil', 'character', 'shadow', 73, 86, 78, 4, NULL, 0, 2, 'Shadow pressure specialist.', 1, 1, 7, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL),
-(6, 'Light Bringer', 'character', 'light', 75, 84, 76, 4, NULL, 0, 2, 'Light-based balanced rare.', 1, 1, 7, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL),
-(7, 'Thunder Horn', 'character', 'lightning', 79, 71, 85, 3, NULL, 0, 2, 'Sharp lightning striker.', 1, 1, 7, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL),
-(8, 'Nature Bloom', 'character', 'nature', 70, 83, 68, 2, NULL, 0, 1, 'Nature magic support card.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL),
-(9, 'Frost Pulse', 'character', 'ice', 74, 88, 63, 3, NULL, 0, 2, 'Cold magic burst card.', 1, 1, 7, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL),
-(10, 'Iron Claw', 'character', 'metal', 86, 55, 77, 4, NULL, 0, 1, 'Heavy metal bruiser.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-13 14:04:56', NULL, NULL, NULL);
+INSERT INTO `cards` (`id`, `name`, `type`, `element_type`, `power`, `power_min`, `power_max`, `magic`, `magic_min`, `magic_max`, `skill`, `skill_min`, `skill_max`, `cost`, `effect`, `value`, `card_level_cap`, `base_card_level`, `rarity_id`, `description`, `is_active`, `is_starter_card`, `starter_weight`, `created_at`, `updated_at`, `image_path`, `image_filename`, `image_mime_type`) VALUES
+(1, 'Aqua Knight', 'character', 'water', 82, 72, 82, 76, 66, 76, 70, 60, 70, 3, NULL, 0, 11, 1, 1, 'Balanced water fighter.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL),
+(2, 'Flame Burst', 'character', 'fire', 88, 78, 88, 69, 59, 69, 65, 55, 65, 4, NULL, 0, 11, 1, 1, 'Aggressive fire striker.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL),
+(3, 'Stone Guard', 'character', 'rock', 80, 70, 80, 50, 40, 50, 72, 62, 72, 3, NULL, 0, 11, 1, 1, 'Stable rock defender.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL),
+(4, 'Wind Fang', 'character', 'wind', 68, 58, 68, 74, 64, 74, 87, 77, 87, 2, NULL, 0, 11, 1, 1, 'Fast wind skill card.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL),
+(5, 'Shadow Veil', 'character', 'shadow', 73, 63, 73, 86, 76, 86, 78, 68, 78, 4, NULL, 0, 11, 1, 2, 'Shadow pressure specialist.', 1, 1, 7, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL),
+(6, 'Light Bringer', 'character', 'light', 75, 65, 75, 84, 74, 84, 76, 66, 76, 4, NULL, 0, 11, 1, 2, 'Light-based balanced rare.', 1, 1, 7, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL),
+(7, 'Thunder Horn', 'character', 'lightning', 79, 69, 79, 71, 61, 71, 85, 75, 85, 3, NULL, 0, 11, 1, 2, 'Sharp lightning striker.', 1, 1, 7, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL),
+(8, 'Nature Bloom', 'character', 'nature', 70, 60, 70, 83, 73, 83, 68, 58, 68, 2, NULL, 0, 11, 1, 1, 'Nature magic support card.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL),
+(9, 'Frost Pulse', 'character', 'ice', 74, 64, 74, 88, 78, 88, 63, 53, 63, 3, NULL, 0, 11, 1, 2, 'Cold magic burst card.', 1, 1, 7, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL),
+(10, 'Iron Claw', 'character', 'metal', 86, 76, 86, 55, 45, 55, 77, 67, 77, 4, NULL, 0, 11, 1, 1, 'Heavy metal bruiser.', 1, 1, 10, '2026-04-13 14:04:56', '2026-04-15 12:26:20', NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -236,6 +245,81 @@ INSERT INTO `player_cards` (`id`, `player_id`, `card_id`, `quantity`, `acquired_
 (8, 2, 8, 1, '2026-04-13 14:50:28'),
 (9, 2, 10, 1, '2026-04-13 14:50:28'),
 (10, 2, 6, 1, '2026-04-13 14:50:28');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `player_card_progress`
+--
+
+CREATE TABLE `player_card_progress` (
+  `id` int(11) NOT NULL,
+  `player_card_id` int(11) NOT NULL,
+  `player_id` int(11) NOT NULL,
+  `card_id` int(11) NOT NULL,
+  `current_level` int(11) NOT NULL DEFAULT 1,
+  `upgrade_count` int(11) NOT NULL DEFAULT 0,
+  `power_min_bonus` int(11) NOT NULL DEFAULT 0,
+  `power_max_bonus` int(11) NOT NULL DEFAULT 0,
+  `magic_min_bonus` int(11) NOT NULL DEFAULT 0,
+  `magic_max_bonus` int(11) NOT NULL DEFAULT 0,
+  `skill_min_bonus` int(11) NOT NULL DEFAULT 0,
+  `skill_max_bonus` int(11) NOT NULL DEFAULT 0,
+  `total_upgrade_spent_coins` int(11) NOT NULL DEFAULT 0,
+  `total_upgrade_spent_gems` int(11) NOT NULL DEFAULT 0,
+  `last_upgraded_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `player_card_progress`
+--
+
+INSERT INTO `player_card_progress` (`id`, `player_card_id`, `player_id`, `card_id`, `current_level`, `upgrade_count`, `power_min_bonus`, `power_max_bonus`, `magic_min_bonus`, `magic_max_bonus`, `skill_min_bonus`, `skill_max_bonus`, `total_upgrade_spent_coins`, `total_upgrade_spent_gems`, `last_upgraded_at`, `created_at`, `updated_at`) VALUES
+(1, 4, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20'),
+(2, 3, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20'),
+(3, 5, 2, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20'),
+(4, 6, 2, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20'),
+(5, 2, 2, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20'),
+(6, 10, 2, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20'),
+(7, 7, 2, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20'),
+(8, 8, 2, 8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20'),
+(9, 1, 2, 9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20'),
+(10, 9, 2, 10, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, '2026-04-15 12:26:20', '2026-04-15 12:26:20');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `player_card_upgrade_history`
+--
+
+CREATE TABLE `player_card_upgrade_history` (
+  `id` int(11) NOT NULL,
+  `player_card_progress_id` int(11) NOT NULL,
+  `player_card_id` int(11) NOT NULL,
+  `player_id` int(11) NOT NULL,
+  `card_id` int(11) NOT NULL,
+  `old_level` int(11) NOT NULL,
+  `new_level` int(11) NOT NULL,
+  `power_min_before` int(11) NOT NULL DEFAULT 0,
+  `power_min_after` int(11) NOT NULL DEFAULT 0,
+  `power_max_before` int(11) NOT NULL DEFAULT 0,
+  `power_max_after` int(11) NOT NULL DEFAULT 0,
+  `magic_min_before` int(11) NOT NULL DEFAULT 0,
+  `magic_min_after` int(11) NOT NULL DEFAULT 0,
+  `magic_max_before` int(11) NOT NULL DEFAULT 0,
+  `magic_max_after` int(11) NOT NULL DEFAULT 0,
+  `skill_min_before` int(11) NOT NULL DEFAULT 0,
+  `skill_min_after` int(11) NOT NULL DEFAULT 0,
+  `skill_max_before` int(11) NOT NULL DEFAULT 0,
+  `skill_max_after` int(11) NOT NULL DEFAULT 0,
+  `coins_spent` int(11) NOT NULL DEFAULT 0,
+  `gems_spent` int(11) NOT NULL DEFAULT 0,
+  `upgrade_status` varchar(20) NOT NULL DEFAULT 'success',
+  `upgrade_note` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -390,6 +474,25 @@ ALTER TABLE `player_cards`
   ADD KEY `idx_player_cards_card_id` (`card_id`);
 
 --
+-- Indexes for table `player_card_progress`
+--
+ALTER TABLE `player_card_progress`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_player_card_progress_player_card` (`player_card_id`),
+  ADD KEY `idx_player_card_progress_player` (`player_id`),
+  ADD KEY `idx_player_card_progress_card` (`card_id`);
+
+--
+-- Indexes for table `player_card_upgrade_history`
+--
+ALTER TABLE `player_card_upgrade_history`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_upgrade_history_progress` (`player_card_progress_id`),
+  ADD KEY `idx_upgrade_history_player` (`player_id`),
+  ADD KEY `idx_upgrade_history_card` (`card_id`),
+  ADD KEY `fk_upgrade_history_player_card` (`player_card_id`);
+
+--
 -- Indexes for table `player_decks`
 --
 ALTER TABLE `player_decks`
@@ -465,6 +568,18 @@ ALTER TABLE `player_cards`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
+-- AUTO_INCREMENT for table `player_card_progress`
+--
+ALTER TABLE `player_card_progress`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+
+--
+-- AUTO_INCREMENT for table `player_card_upgrade_history`
+--
+ALTER TABLE `player_card_upgrade_history`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `player_decks`
 --
 ALTER TABLE `player_decks`
@@ -532,6 +647,23 @@ ALTER TABLE `cards`
 ALTER TABLE `player_cards`
   ADD CONSTRAINT `fk_player_cards_card` FOREIGN KEY (`card_id`) REFERENCES `cards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_player_cards_player` FOREIGN KEY (`player_id`) REFERENCES `players` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `player_card_progress`
+--
+ALTER TABLE `player_card_progress`
+  ADD CONSTRAINT `fk_player_card_progress_card` FOREIGN KEY (`card_id`) REFERENCES `cards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_player_card_progress_player` FOREIGN KEY (`player_id`) REFERENCES `players` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_player_card_progress_player_card` FOREIGN KEY (`player_card_id`) REFERENCES `player_cards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `player_card_upgrade_history`
+--
+ALTER TABLE `player_card_upgrade_history`
+  ADD CONSTRAINT `fk_upgrade_history_card` FOREIGN KEY (`card_id`) REFERENCES `cards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_upgrade_history_player` FOREIGN KEY (`player_id`) REFERENCES `players` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_upgrade_history_player_card` FOREIGN KEY (`player_card_id`) REFERENCES `player_cards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_upgrade_history_progress` FOREIGN KEY (`player_card_progress_id`) REFERENCES `player_card_progress` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `player_decks`
