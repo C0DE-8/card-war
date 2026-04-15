@@ -30,8 +30,12 @@ function computeEffectiveStatRange(cardRow, progressRow, statType) {
   const baseMinRaw = cardRow?.[`${statType}_min`];
   const baseMaxRaw = cardRow?.[`${statType}_max`];
 
-  const baseMin = Number.isFinite(Number(baseMinRaw)) ? Number(baseMinRaw) : fixedStat;
-  const baseMax = Number.isFinite(Number(baseMaxRaw)) ? Number(baseMaxRaw) : fixedStat;
+  let baseMin = Number.isFinite(Number(baseMinRaw)) ? Number(baseMinRaw) : fixedStat;
+  let baseMax = Number.isFinite(Number(baseMaxRaw)) ? Number(baseMaxRaw) : fixedStat;
+
+  if (baseMax < baseMin) {
+    baseMax = baseMin;
+  }
 
   const minBonus = progressRow ? Number(progressRow[`${statType}_min_bonus`] ?? 0) : 0;
   const maxBonus = progressRow ? Number(progressRow[`${statType}_max_bonus`] ?? 0) : 0;
@@ -45,8 +49,7 @@ function computeEffectiveStatRange(cardRow, progressRow, statType) {
   }
 
   if (effectiveMax < effectiveMin) {
-    effectiveMin = fixedStat;
-    effectiveMax = fixedStat;
+    effectiveMax = effectiveMin;
   }
 
   return {

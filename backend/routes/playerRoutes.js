@@ -5,37 +5,46 @@ const moment = require("moment");
 
 const router = express.Router();
 
-function rollupBaseStat(cardRow, statType) {
-  const fixedStat = Number(cardRow?.[statType] ?? 0);
+function toNumber(value, fallback = 0) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function getBaseRange(cardRow, statType) {
+  const fixedStat = toNumber(cardRow?.[statType], 0);
   const baseMinRaw = cardRow?.[`${statType}_min`];
   const baseMaxRaw = cardRow?.[`${statType}_max`];
 
-  const baseMin = Number.isFinite(Number(baseMinRaw)) ? Number(baseMinRaw) : fixedStat;
-  const baseMax = Number.isFinite(Number(baseMaxRaw)) ? Number(baseMaxRaw) : fixedStat;
+  let baseMin = Number.isFinite(Number(baseMinRaw)) ? Number(baseMinRaw) : fixedStat;
+  let baseMax = Number.isFinite(Number(baseMaxRaw)) ? Number(baseMaxRaw) : fixedStat;
+
+  baseMin = toNumber(baseMin, fixedStat);
+  baseMax = toNumber(baseMax, fixedStat);
+
+  if (baseMax < baseMin) {
+    baseMax = baseMin;
+  }
 
   return { baseMin, baseMax, fixedStat };
 }
 
-function computeEffectiveRange(cardRow, progressRow, statType) {
-  const { baseMin, baseMax, fixedStat } = rollupBaseStat(cardRow, statType);
+function getEffectiveRange(cardRow, progressRow, statType) {
+  const { baseMin, baseMax, fixedStat } = getBaseRange(cardRow, statType);
 
-  const minBonus = progressRow ? Number(progressRow[`${statType}_min_bonus`] ?? 0) : 0;
-  const maxBonus = progressRow ? Number(progressRow[`${statType}_max_bonus`] ?? 0) : 0;
+  const minBonus = toNumber(progressRow?.[`${statType}_min_bonus`], 0);
+  const maxBonus = toNumber(progressRow?.[`${statType}_max_bonus`], 0);
 
-  let effectiveMin = baseMin + (Number.isFinite(minBonus) ? minBonus : 0);
-  let effectiveMax = baseMax + (Number.isFinite(maxBonus) ? maxBonus : 0);
+  let effectiveMin = baseMin + minBonus;
+  let effectiveMax = baseMax + maxBonus;
 
-  if (!Number.isFinite(effectiveMin) || !Number.isFinite(effectiveMax)) {
-    effectiveMin = fixedStat;
-    effectiveMax = fixedStat;
-  }
+  effectiveMin = toNumber(effectiveMin, fixedStat);
+  effectiveMax = toNumber(effectiveMax, fixedStat);
 
   if (effectiveMax < effectiveMin) {
-    effectiveMin = fixedStat;
-    effectiveMax = fixedStat;
+    effectiveMax = effectiveMin;
   }
 
-  return { effectiveMin, effectiveMax };
+  return { baseMin, baseMax, effectiveMin, effectiveMax };
 }
 
 function getCardLevelDefaults(cardRow) {
@@ -241,24 +250,37 @@ async function fetchActiveDeck(playerId) {
             const defaults = getCardLevelDefaults(card);
             const currentLevel = Number(card.current_level);
             const resolvedLevel =
-              Number.isInteger(currentLevel) && currentLevel > 0
-                ? currentLevel
-                : defaults.base_card_level;
+              Number.isInteger(currentLevel) && currentLevel > 0 ? currentLevel : 1;
 
-            const powerRange = computeEffectiveRange(card, card, "power");
-            const magicRange = computeEffectiveRange(card, card, "magic");
-            const skillRange = computeEffectiveRange(card, card, "skill");
+            const progress = {
+              power_min_bonus: card.power_min_bonus,
+              power_max_bonus: card.power_max_bonus,
+              magic_min_bonus: card.magic_min_bonus,
+              magic_max_bonus: card.magic_max_bonus,
+              skill_min_bonus: card.skill_min_bonus,
+              skill_max_bonus: card.skill_max_bonus
+            };
+
+            const powerRange = getEffectiveRange(card, progress, "power");
+            const magicRange = getEffectiveRange(card, progress, "magic");
+            const skillRange = getEffectiveRange(card, progress, "skill");
 
             return {
               current_level: resolvedLevel,
               base_card_level: defaults.base_card_level,
               card_level_cap: defaults.card_level_cap,
-              power_min: powerRange.effectiveMin,
-              power_max: powerRange.effectiveMax,
-              magic_min: magicRange.effectiveMin,
-              magic_max: magicRange.effectiveMax,
-              skill_min: skillRange.effectiveMin,
-              skill_max: skillRange.effectiveMax,
+              power_min: powerRange.baseMin,
+              power_max: powerRange.baseMax,
+              effective_power_min: powerRange.effectiveMin,
+              effective_power_max: powerRange.effectiveMax,
+              magic_min: magicRange.baseMin,
+              magic_max: magicRange.baseMax,
+              effective_magic_min: magicRange.effectiveMin,
+              effective_magic_max: magicRange.effectiveMax,
+              skill_min: skillRange.baseMin,
+              skill_max: skillRange.baseMax,
+              effective_skill_min: skillRange.effectiveMin,
+              effective_skill_max: skillRange.effectiveMax,
               power: powerRange.effectiveMax,
               magic: magicRange.effectiveMax,
               skill: skillRange.effectiveMax
@@ -283,17 +305,44 @@ async function fetchActiveDeck(playerId) {
   };
 }
 
-router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
+function getUpgradeCostCoins(nextLevel) {
+  const level = Number(nextLevel);
+  if (!Number.isInteger(level) || level < 1) {
+    return 0;
+  }
+  return level * 200;
+}
+
+function getUpgradeIncrements(nextLevel) {
+  const level = Number(nextLevel);
+  if (!Number.isInteger(level) || level < 1) {
+    return { minIncrease: 0, maxIncrease: 0 };
+  }
+
+  if (level >= 10) {
+    return { minIncrease: 2, maxIncrease: 5 };
+  }
+  if (level >= 7) {
+    return { minIncrease: 2, maxIncrease: 4 };
+  }
+  if (level >= 4) {
+    return { minIncrease: 1, maxIncrease: 3 };
+  }
+
+  return { minIncrease: 1, maxIncrease: 2 };
+}
+
+router.post("/cards/:playerCardId/upgrade", authenticateToken, async (req, res) => {
   let connection;
 
   try {
     const playerId = req.user.id;
-    const cardId = Number(req.params.id);
+    const playerCardId = Number(req.params.playerCardId);
 
-    if (!cardId || Number.isNaN(cardId)) {
+    if (!playerCardId || Number.isNaN(playerCardId)) {
       return res.status(400).json({
         success: false,
-        message: "Valid card ID is required."
+        message: "Valid playerCardId is required."
       });
     }
 
@@ -301,7 +350,7 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
     await connection.beginTransaction();
 
     const [playerRows] = await connection.execute(
-      `SELECT id, coins, gems
+      `SELECT id, coins
        FROM players
        WHERE id = ?
        LIMIT 1 FOR UPDATE`,
@@ -318,38 +367,41 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
 
     const player = playerRows[0];
 
-    const [cardRows] = await connection.execute(
+    const [ownedCardRows] = await connection.execute(
       `SELECT
-        id,
-        type,
-        base_card_level,
-        card_level_cap,
-        power,
-        magic,
-        skill,
-        power_min,
-        power_max,
-        magic_min,
-        magic_max,
-        skill_min,
-        skill_max
-       FROM cards
-       WHERE id = ?
-       LIMIT 1`,
-      [cardId]
+        pc.id AS player_card_id,
+        pc.card_id,
+        c.type,
+        c.base_card_level,
+        c.card_level_cap,
+        c.power,
+        c.magic,
+        c.skill,
+        c.power_min,
+        c.power_max,
+        c.magic_min,
+        c.magic_max,
+        c.skill_min,
+        c.skill_max
+       FROM player_cards pc
+       JOIN cards c ON c.id = pc.card_id
+       WHERE pc.id = ? AND pc.player_id = ?
+       LIMIT 1 FOR UPDATE`,
+      [playerCardId, playerId]
     );
 
-    if (cardRows.length === 0) {
+    if (ownedCardRows.length === 0) {
       await connection.rollback();
       return res.status(404).json({
         success: false,
-        message: "Card not found."
+        message: "Player card not found."
       });
     }
 
-    const card = cardRows[0];
+    const ownedCard = ownedCardRows[0];
+    const cardId = Number(ownedCard.card_id);
 
-    if (card.type !== "character") {
+    if (ownedCard.type !== "character") {
       await connection.rollback();
       return res.status(400).json({
         success: false,
@@ -357,38 +409,21 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
       });
     }
 
-    const [playerCardRows] = await connection.execute(
-      `SELECT id, quantity
-       FROM player_cards
-       WHERE player_id = ? AND card_id = ?
-       LIMIT 1 FOR UPDATE`,
-      [playerId, cardId]
-    );
-
-    if (playerCardRows.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({
-        success: false,
-        message: "You do not own this card."
-      });
-    }
-
-    const playerCard = playerCardRows[0];
-    const defaults = getCardLevelDefaults(card);
+    const defaults = getCardLevelDefaults(ownedCard);
 
     const [progressRows] = await connection.execute(
       `SELECT *
        FROM player_card_progress
        WHERE player_id = ? AND card_id = ? AND player_card_id = ?
        LIMIT 1 FOR UPDATE`,
-      [playerId, cardId, playerCard.id]
+      [playerId, cardId, ownedCard.player_card_id]
     );
 
     const progress = progressRows.length > 0 ? progressRows[0] : null;
 
-    const oldLevel = progress?.current_level
-      ? Number(progress.current_level)
-      : defaults.base_card_level;
+    const oldLevelCandidate = progress?.current_level ? Number(progress.current_level) : 1;
+    const oldLevel =
+      Number.isInteger(oldLevelCandidate) && oldLevelCandidate > 0 ? oldLevelCandidate : 1;
 
     if (oldLevel >= defaults.card_level_cap) {
       await connection.rollback();
@@ -401,25 +436,23 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
     }
 
     const newLevel = oldLevel + 1;
-    const coinsCost = 100 * newLevel;
-    const gemsCost = newLevel >= Math.max(defaults.card_level_cap - 1, 10) ? 1 : 0;
+    const coinsCost = getUpgradeCostCoins(newLevel);
 
-    if (Number(player.coins) < coinsCost || Number(player.gems) < gemsCost) {
+    if (Number(player.coins) < coinsCost) {
       await connection.rollback();
       return res.status(400).json({
         success: false,
         message: "Not enough resources to upgrade this card.",
-        required: { coins: coinsCost, gems: gemsCost },
-        available: { coins: Number(player.coins), gems: Number(player.gems) }
+        required: { coins: coinsCost },
+        available: { coins: Number(player.coins) }
       });
     }
 
-    const beforePower = computeEffectiveRange(card, progress ?? {}, "power");
-    const beforeMagic = computeEffectiveRange(card, progress ?? {}, "magic");
-    const beforeSkill = computeEffectiveRange(card, progress ?? {}, "skill");
+    const beforePower = getEffectiveRange(ownedCard, progress ?? {}, "power");
+    const beforeMagic = getEffectiveRange(ownedCard, progress ?? {}, "magic");
+    const beforeSkill = getEffectiveRange(ownedCard, progress ?? {}, "skill");
 
-    const minIncrease = 1;
-    const maxIncrease = 2;
+    const { minIncrease, maxIncrease } = getUpgradeIncrements(newLevel);
 
     const nextBonuses = {
       power_min_bonus: Number(progress?.power_min_bonus ?? 0) + minIncrease,
@@ -430,9 +463,9 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
       skill_max_bonus: Number(progress?.skill_max_bonus ?? 0) + maxIncrease
     };
 
-    const afterPower = computeEffectiveRange(card, nextBonuses, "power");
-    const afterMagic = computeEffectiveRange(card, nextBonuses, "magic");
-    const afterSkill = computeEffectiveRange(card, nextBonuses, "skill");
+    const afterPower = getEffectiveRange(ownedCard, nextBonuses, "power");
+    const afterMagic = getEffectiveRange(ownedCard, nextBonuses, "magic");
+    const afterSkill = getEffectiveRange(ownedCard, nextBonuses, "skill");
 
     if (
       afterPower.effectiveMax < afterPower.effectiveMin ||
@@ -448,15 +481,15 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
 
     await connection.execute(
       `UPDATE players
-       SET coins = coins - ?, gems = gems - ?, updated_at = NOW()
+       SET coins = coins - ?, updated_at = NOW()
        WHERE id = ?`,
-      [coinsCost, gemsCost, playerId]
+      [coinsCost, playerId]
     );
 
     let progressId = progress?.id ?? null;
     const upgradeCount = Number(progress?.upgrade_count ?? 0) + 1;
     const totalCoins = Number(progress?.total_upgrade_spent_coins ?? 0) + coinsCost;
-    const totalGems = Number(progress?.total_upgrade_spent_gems ?? 0) + gemsCost;
+    const totalGems = Number(progress?.total_upgrade_spent_gems ?? 0);
 
     if (!progress) {
       const [insertResult] = await connection.execute(
@@ -479,7 +512,7 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
          )
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
-          playerCard.id,
+          ownedCard.player_card_id,
           playerId,
           cardId,
           newLevel,
@@ -557,7 +590,7 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'success', NULL)`,
       [
         progressId,
-        playerCard.id,
+        ownedCard.player_card_id,
         playerId,
         cardId,
         oldLevel,
@@ -575,7 +608,7 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
         beforeSkill.effectiveMax,
         afterSkill.effectiveMax,
         coinsCost,
-        gemsCost
+        0
       ]
     );
 
@@ -584,26 +617,31 @@ router.post("/cards/:id/upgrade", authenticateToken, async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Card upgraded successfully.",
-      upgrade_cost: { coins: coinsCost, gems: gemsCost },
+      upgrade_cost: { coins: coinsCost },
       upgraded_card: {
-        player_card_id: playerCard.id,
+        player_card_id: ownedCard.player_card_id,
         player_card_progress_id: progressId,
         card_id: cardId,
         current_level: newLevel,
         card_level_cap: defaults.card_level_cap,
-        power_min: afterPower.effectiveMin,
-        power_max: afterPower.effectiveMax,
-        magic_min: afterMagic.effectiveMin,
-        magic_max: afterMagic.effectiveMax,
-        skill_min: afterSkill.effectiveMin,
-        skill_max: afterSkill.effectiveMax,
+        power_min: afterPower.baseMin,
+        power_max: afterPower.baseMax,
+        effective_power_min: afterPower.effectiveMin,
+        effective_power_max: afterPower.effectiveMax,
+        magic_min: afterMagic.baseMin,
+        magic_max: afterMagic.baseMax,
+        effective_magic_min: afterMagic.effectiveMin,
+        effective_magic_max: afterMagic.effectiveMax,
+        skill_min: afterSkill.baseMin,
+        skill_max: afterSkill.baseMax,
+        effective_skill_min: afterSkill.effectiveMin,
+        effective_skill_max: afterSkill.effectiveMax,
         power: afterPower.effectiveMax,
         magic: afterMagic.effectiveMax,
         skill: afterSkill.effectiveMax
       },
       updated_player_resources: {
-        coins: Number(player.coins) - coinsCost,
-        gems: Number(player.gems) - gemsCost
+        coins: Number(player.coins) - coinsCost
       }
     });
   } catch (error) {
