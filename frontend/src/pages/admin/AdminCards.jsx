@@ -34,29 +34,83 @@ const ALLOWED_EFFECTS = [
   "freeze"
 ];
 
+const ELEMENT_TYPES = [
+  "water",
+  "fire",
+  "rock",
+  "wind",
+  "shadow",
+  "light",
+  "lightning",
+  "nature",
+  "ice",
+  "metal"
+];
+
+const NUMBER_FIELDS = [
+  "power",
+  "magic",
+  "skill",
+  "power_min",
+  "power_max",
+  "magic_min",
+  "magic_max",
+  "skill_min",
+  "skill_max",
+  "base_card_level",
+  "card_level_cap",
+  "cost",
+  "value",
+  "starter_weight"
+];
+
 const emptyCreate = () => ({
   type: "character",
   name: "",
+  element_type: "water",
   power: 0,
   magic: 0,
   skill: 0,
+  power_min: 0,
+  power_max: 0,
+  magic_min: 0,
+  magic_max: 0,
+  skill_min: 0,
+  skill_max: 0,
+  base_card_level: 1,
+  card_level_cap: 11,
+  cost: 1,
   effect: "damage",
   value: 0,
   rarity_id: "",
   description: "",
+  is_starter_card: false,
+  starter_weight: 1,
   image: null
 });
 
 const emptyEdit = () => ({
   name: "",
+  element_type: "water",
   power: 0,
   magic: 0,
   skill: 0,
+  power_min: 0,
+  power_max: 0,
+  magic_min: 0,
+  magic_max: 0,
+  skill_min: 0,
+  skill_max: 0,
+  base_card_level: 1,
+  card_level_cap: 11,
+  cost: 1,
   effect: "damage",
   value: 0,
   rarity_id: "",
   description: "",
   is_active: true,
+  is_starter_card: false,
+  starter_weight: 1,
   image: null
 });
 
@@ -106,14 +160,26 @@ const AdminCards = () => {
     }
     setEditForm({
       name: selectedCard.name || "",
+      element_type: selectedCard.element_type || "water",
       power: selectedCard.power ?? 0,
       magic: selectedCard.magic ?? 0,
       skill: selectedCard.skill ?? 0,
+      power_min: selectedCard.power_min ?? selectedCard.power ?? 0,
+      power_max: selectedCard.power_max ?? selectedCard.power ?? 0,
+      magic_min: selectedCard.magic_min ?? selectedCard.magic ?? 0,
+      magic_max: selectedCard.magic_max ?? selectedCard.magic ?? 0,
+      skill_min: selectedCard.skill_min ?? selectedCard.skill ?? 0,
+      skill_max: selectedCard.skill_max ?? selectedCard.skill ?? 0,
+      base_card_level: selectedCard.base_card_level ?? 1,
+      card_level_cap: selectedCard.card_level_cap ?? 11,
+      cost: selectedCard.cost ?? 1,
       effect: selectedCard.effect || "damage",
       value: selectedCard.value ?? 0,
       rarity_id: String(selectedCard.rarity_id ?? ""),
       description: selectedCard.description || "",
       is_active: !!selectedCard.is_active,
+      is_starter_card: !!selectedCard.is_starter_card,
+      starter_weight: selectedCard.starter_weight ?? 1,
       image: null
     });
   }, [selectedCard]);
@@ -135,17 +201,60 @@ const AdminCards = () => {
     );
   }, [cards, search]);
 
+  const validateCardForm = (form, cardType) => {
+    if (!form.name.trim() || !form.rarity_id || !form.description.trim()) {
+      return "Name, rarity, and description are required.";
+    }
+    if (!Number.isInteger(Number(form.cost)) || Number(form.cost) < 1) {
+      return "Cost must be an integer of at least 1.";
+    }
+    if (!Number.isInteger(Number(form.starter_weight)) || Number(form.starter_weight) < 1) {
+      return "Starter weight must be an integer of at least 1.";
+    }
+    if (cardType === "character") {
+      if (!String(form.element_type || "").trim()) {
+        return "Character cards require an element type.";
+      }
+      if (
+        !Number.isInteger(Number(form.base_card_level)) ||
+        !Number.isInteger(Number(form.card_level_cap)) ||
+        Number(form.base_card_level) < 1 ||
+        Number(form.card_level_cap) < Number(form.base_card_level)
+      ) {
+        return "Level cap must be greater than or equal to base level.";
+      }
+      const statRanges = [
+        ["Power", form.power, form.power_min, form.power_max],
+        ["Magic", form.magic, form.magic_min, form.magic_max],
+        ["Skill", form.skill, form.skill_min, form.skill_max]
+      ];
+      for (const [label, value, min, max] of statRanges) {
+        if (Number(value) < 0 || Number(min) < 0 || Number(max) < 0) {
+          return `${label} values cannot be negative.`;
+        }
+        if (Number(max) < Number(min)) {
+          return `${label} max must be greater than or equal to min.`;
+        }
+      }
+    }
+    return null;
+  };
+
   const handleCreateChange = (e) => {
-    const { name, value, files } = e.target;
+    const { name, value, files, type, checked } = e.target;
     if (name === "image") {
       setCreateForm((prev) => ({ ...prev, image: files?.[0] || null }));
       return;
     }
-    if (name === "type") {
-      setCreateForm((prev) => ({ ...prev, type: value }));
+    if (type === "checkbox") {
+      setCreateForm((prev) => ({ ...prev, [name]: checked }));
       return;
     }
-    if (["power", "magic", "skill", "value"].includes(name)) {
+    if (name === "type") {
+      setCreateForm((prev) => ({ ...emptyCreate(), ...prev, type: value }));
+      return;
+    }
+    if (NUMBER_FIELDS.includes(name)) {
       setCreateForm((prev) => ({ ...prev, [name]: value === "" ? "" : Number(value) }));
       return;
     }
@@ -158,11 +267,11 @@ const AdminCards = () => {
       setEditForm((prev) => ({ ...prev, image: files?.[0] || null }));
       return;
     }
-    if (name === "is_active") {
-      setEditForm((prev) => ({ ...prev, is_active: checked }));
+    if (type === "checkbox") {
+      setEditForm((prev) => ({ ...prev, [name]: checked }));
       return;
     }
-    if (["power", "magic", "skill", "value"].includes(name)) {
+    if (NUMBER_FIELDS.includes(name)) {
       setEditForm((prev) => ({ ...prev, [name]: value === "" ? "" : Number(value) }));
       return;
     }
@@ -171,8 +280,9 @@ const AdminCards = () => {
 
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
-    if (!createForm.name.trim() || !createForm.rarity_id || !createForm.description.trim()) {
-      toast.error("Name, rarity, and description are required.");
+    const validationMessage = validateCardForm(createForm, createForm.type);
+    if (validationMessage) {
+      toast.error(validationMessage);
       return;
     }
     try {
@@ -194,8 +304,9 @@ const AdminCards = () => {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     if (!selectedCard) return;
-    if (!editForm.name.trim() || !editForm.rarity_id || !editForm.description.trim()) {
-      toast.error("Name, rarity, and description are required.");
+    const validationMessage = validateCardForm(editForm, selectedCard.type);
+    if (validationMessage) {
+      toast.error(validationMessage);
       return;
     }
     try {
@@ -232,7 +343,9 @@ const AdminCards = () => {
     if (card.type === "character") {
       return (
         <span className={styles.statsLine}>
-          P {card.power ?? 0} · M {card.magic ?? 0} · S {card.skill ?? 0}
+          P {card.power_min ?? card.power ?? 0}-{card.power_max ?? card.power ?? 0} · M{" "}
+          {card.magic_min ?? card.magic ?? 0}-{card.magic_max ?? card.magic ?? 0} · S{" "}
+          {card.skill_min ?? card.skill ?? 0}-{card.skill_max ?? card.skill ?? 0}
         </span>
       );
     }
@@ -242,6 +355,103 @@ const AdminCards = () => {
       </span>
     );
   };
+
+  const renderNumberInput = (form, changeHandler, name, label, min = 0) => (
+    <div className={locStyles.fieldGroup}>
+      <label>{label}</label>
+      <input
+        type="number"
+        min={min}
+        name={name}
+        value={form[name]}
+        onChange={changeHandler}
+        className={locStyles.customSelect}
+      />
+    </div>
+  );
+
+  const renderCharacterFields = (form, changeHandler) => (
+    <>
+      <div className={locStyles.fieldGroup}>
+        <label>Element</label>
+        <div className={locStyles.selectWrap}>
+          <select
+            name="element_type"
+            value={form.element_type}
+            onChange={changeHandler}
+            className={locStyles.customSelect}
+          >
+            {ELEMENT_TYPES.map((element) => (
+              <option key={element} value={element}>
+                {element}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className={styles.fieldGrid}>
+        {renderNumberInput(form, changeHandler, "cost", "Cost", 1)}
+        {renderNumberInput(form, changeHandler, "base_card_level", "Base level", 1)}
+        {renderNumberInput(form, changeHandler, "card_level_cap", "Level cap", 1)}
+      </div>
+      <div className={styles.fieldGrid}>
+        {renderNumberInput(form, changeHandler, "power", "Power", 0)}
+        {renderNumberInput(form, changeHandler, "power_min", "Power min", 0)}
+        {renderNumberInput(form, changeHandler, "power_max", "Power max", 0)}
+      </div>
+      <div className={styles.fieldGrid}>
+        {renderNumberInput(form, changeHandler, "magic", "Magic", 0)}
+        {renderNumberInput(form, changeHandler, "magic_min", "Magic min", 0)}
+        {renderNumberInput(form, changeHandler, "magic_max", "Magic max", 0)}
+      </div>
+      <div className={styles.fieldGrid}>
+        {renderNumberInput(form, changeHandler, "skill", "Skill", 0)}
+        {renderNumberInput(form, changeHandler, "skill_min", "Skill min", 0)}
+        {renderNumberInput(form, changeHandler, "skill_max", "Skill max", 0)}
+      </div>
+    </>
+  );
+
+  const renderAbilityFields = (form, changeHandler) => (
+    <>
+      <div className={styles.fieldGrid}>
+        {renderNumberInput(form, changeHandler, "cost", "Cost", 1)}
+        {renderNumberInput(form, changeHandler, "value", "Value", 0)}
+      </div>
+      <div className={locStyles.fieldGroup}>
+        <label>Effect</label>
+        <div className={locStyles.selectWrap}>
+          <select
+            name="effect"
+            value={form.effect}
+            onChange={changeHandler}
+            className={locStyles.customSelect}
+          >
+            {ALLOWED_EFFECTS.map((ef) => (
+              <option key={ef} value={ef}>
+                {ef}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderStarterFields = (form, changeHandler) => (
+    <>
+      <label className={styles.checkboxRow}>
+        <input
+          type="checkbox"
+          name="is_starter_card"
+          checked={form.is_starter_card}
+          onChange={changeHandler}
+        />
+        Starter card
+      </label>
+      {renderNumberInput(form, changeHandler, "starter_weight", "Starter weight", 1)}
+    </>
+  );
 
   return (
     <div className={locStyles.adminPage}>
@@ -306,7 +516,9 @@ const AdminCards = () => {
                         <th>Name</th>
                         <th>Type</th>
                         <th>Stats</th>
+                        <th>Cost</th>
                         <th>Rarity</th>
+                        <th>Starter</th>
                         <th>State</th>
                         <th />
                       </tr>
@@ -338,8 +550,12 @@ const AdminCards = () => {
                           <td>{card.name}</td>
                           <td>
                             <span className={styles.typePill}>{card.type}</span>
+                            {card.element_type ? (
+                              <span className={styles.elementPill}>{card.element_type}</span>
+                            ) : null}
                           </td>
                           <td>{statCell(card)}</td>
+                          <td>{card.cost ?? 1}</td>
                           <td>
                             <span
                               style={{
@@ -348,6 +564,15 @@ const AdminCards = () => {
                             >
                               {card.rarity_name}
                             </span>
+                          </td>
+                          <td>
+                            {card.is_starter_card ? (
+                              <span className={`${styles.badge} ${styles.badgeStarter}`}>
+                                {card.starter_weight ?? 1}
+                              </span>
+                            ) : (
+                              <span className={styles.mutedInline}>No</span>
+                            )}
                           </td>
                           <td>
                             <span
@@ -426,74 +651,10 @@ const AdminCards = () => {
                       </select>
                     </div>
                   </div>
-                  {createForm.type === "character" ? (
-                    <>
-                      <div className={locStyles.fieldGroup}>
-                        <label>Power</label>
-                        <input
-                          type="number"
-                          min={0}
-                          name="power"
-                          value={createForm.power}
-                          onChange={handleCreateChange}
-                          className={locStyles.customSelect}
-                        />
-                      </div>
-                      <div className={locStyles.fieldGroup}>
-                        <label>Magic</label>
-                        <input
-                          type="number"
-                          min={0}
-                          name="magic"
-                          value={createForm.magic}
-                          onChange={handleCreateChange}
-                          className={locStyles.customSelect}
-                        />
-                      </div>
-                      <div className={locStyles.fieldGroup}>
-                        <label>Skill</label>
-                        <input
-                          type="number"
-                          min={0}
-                          name="skill"
-                          value={createForm.skill}
-                          onChange={handleCreateChange}
-                          className={locStyles.customSelect}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className={locStyles.fieldGroup}>
-                        <label>Effect</label>
-                        <div className={locStyles.selectWrap}>
-                          <select
-                            name="effect"
-                            value={createForm.effect}
-                            onChange={handleCreateChange}
-                            className={locStyles.customSelect}
-                          >
-                            {ALLOWED_EFFECTS.map((ef) => (
-                              <option key={ef} value={ef}>
-                                {ef}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className={locStyles.fieldGroup}>
-                        <label>Value</label>
-                        <input
-                          type="number"
-                          min={0}
-                          name="value"
-                          value={createForm.value}
-                          onChange={handleCreateChange}
-                          className={locStyles.customSelect}
-                        />
-                      </div>
-                    </>
-                  )}
+                  {createForm.type === "character"
+                    ? renderCharacterFields(createForm, handleCreateChange)
+                    : renderAbilityFields(createForm, handleCreateChange)}
+                  {renderStarterFields(createForm, handleCreateChange)}
                   <div className={locStyles.fieldGroup}>
                     <label>Description</label>
                     <textarea
@@ -561,74 +722,10 @@ const AdminCards = () => {
                         </select>
                       </div>
                     </div>
-                    {selectedCard.type === "character" ? (
-                      <>
-                        <div className={locStyles.fieldGroup}>
-                          <label>Power</label>
-                          <input
-                            type="number"
-                            min={0}
-                            name="power"
-                            value={editForm.power}
-                            onChange={handleEditChange}
-                            className={locStyles.customSelect}
-                          />
-                        </div>
-                        <div className={locStyles.fieldGroup}>
-                          <label>Magic</label>
-                          <input
-                            type="number"
-                            min={0}
-                            name="magic"
-                            value={editForm.magic}
-                            onChange={handleEditChange}
-                            className={locStyles.customSelect}
-                          />
-                        </div>
-                        <div className={locStyles.fieldGroup}>
-                          <label>Skill</label>
-                          <input
-                            type="number"
-                            min={0}
-                            name="skill"
-                            value={editForm.skill}
-                            onChange={handleEditChange}
-                            className={locStyles.customSelect}
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className={locStyles.fieldGroup}>
-                          <label>Effect</label>
-                          <div className={locStyles.selectWrap}>
-                            <select
-                              name="effect"
-                              value={editForm.effect}
-                              onChange={handleEditChange}
-                              className={locStyles.customSelect}
-                            >
-                              {ALLOWED_EFFECTS.map((ef) => (
-                                <option key={ef} value={ef}>
-                                  {ef}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                        <div className={locStyles.fieldGroup}>
-                          <label>Value</label>
-                          <input
-                            type="number"
-                            min={0}
-                            name="value"
-                            value={editForm.value}
-                            onChange={handleEditChange}
-                            className={locStyles.customSelect}
-                          />
-                        </div>
-                      </>
-                    )}
+                    {selectedCard.type === "character"
+                      ? renderCharacterFields(editForm, handleEditChange)
+                      : renderAbilityFields(editForm, handleEditChange)}
+                    {renderStarterFields(editForm, handleEditChange)}
                     <div className={locStyles.fieldGroup}>
                       <label>Description</label>
                       <textarea

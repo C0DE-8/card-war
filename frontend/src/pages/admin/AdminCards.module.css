@@ -139,9 +139,23 @@
   color: #fca5a5;
 }
 
+.badgeStarter {
+  background: rgba(251, 191, 36, 0.14);
+  color: #fde68a;
+}
+
 .typePill {
+  display: inline-block;
   font-size: 0.72rem;
   color: #a5b4fc;
+  text-transform: capitalize;
+}
+
+.elementPill {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.68rem;
+  color: #67e8f9;
   text-transform: capitalize;
 }
 
@@ -232,4 +246,34 @@
   color: #64748b;
   font-size: 0.8rem;
   margin-top: 8px;
+}
+
+.mutedInline {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.checkboxRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 12px;
+  color: #cbd5e1;
+  font-size: 0.86rem;
+}
+
+.checkboxRow input {
+  accent-color: #ff4d6d;
+}
+
+@media (max-width: 680px) {
+  .fieldGrid {
+    grid-template-columns: 1fr;
+  }
 }
