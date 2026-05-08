@@ -1,6 +1,6 @@
-import styles from "./DashboardNav.module.css";
+import styles from "./Nav.module.css";
 
-export default function DashboardNav({ items, onNavigate }) {
+export default function Nav({ items, onNavigate }) {
   return (
     <nav className={styles.bottomNav} aria-label="Main navigation">
       {items.map((item) => {

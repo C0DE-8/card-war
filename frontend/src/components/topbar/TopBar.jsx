@@ -1,7 +1,7 @@
 import { BadgePlus, Gem, LogOut, Shield, Trophy } from "lucide-react";
-import styles from "./Dashboard.module.css";
+import styles from "./TopBar.module.css";
 
-export default function DashboardTopBar({ player, onLogout }) {
+export default function TopBar({ player, onLogout }) {
   const resources = [
     { label: "Level", value: player?.level ?? 1, icon: Shield, variant: "level" },
     { label: "EXP", value: player?.exp ?? 0, icon: BadgePlus, variant: "exp" },

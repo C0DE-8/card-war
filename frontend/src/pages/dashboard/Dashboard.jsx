@@ -13,9 +13,9 @@ import api from "../../api/axios";
 import { getPlayerCards } from "../../api/playerCards";
 import ProfileBanner from "../../components/dashboard/ProfileBanner";
 import ProfileModal from "../../components/dashboard/ProfileModal";
-import DashboardNav from "../../components/nav/DashboardNav";
+import Nav from "../../components/nav/Nav";
+import TopBar from "../../components/topbar/TopBar";
 import styles from "./Dashboard.module.css";
-import DashboardTopBar from "./DashboardTopBar";
 import VisualStage from "./VisualStage";
 
 const Dashboard = () => {
@@ -144,7 +144,7 @@ const Dashboard = () => {
     <div className={styles.shell}>
       <div className={styles.dashboard}>
         <div className={styles.topSlot}>
-          <DashboardTopBar player={player} onLogout={handleLogout} />
+          <TopBar player={player} onLogout={handleLogout} />
         </div>
 
         <div className={styles.noticeSlot}>
@@ -178,7 +178,7 @@ const Dashboard = () => {
         </main>
 
         <div className={styles.navSlot}>
-          <DashboardNav items={bottomNav} onNavigate={handleNav} />
+          <Nav items={bottomNav} onNavigate={handleNav} />
         </div>
       </div>
 

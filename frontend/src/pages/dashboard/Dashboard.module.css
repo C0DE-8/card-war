@@ -1,16 +1,36 @@
 .shell {
+  position: relative;
   height: 100vh;
   height: 100dvh;
   padding: 12px;
-  color: #fff7df;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08) 25%, transparent 25%) 0 0 / 72px 72px,
-    linear-gradient(225deg, rgba(255, 255, 255, 0.07) 25%, transparent 25%) 0 0 / 72px 72px,
-    linear-gradient(315deg, rgba(8, 36, 74, 0.64) 25%, transparent 25%) 0 0 / 72px 72px,
-    radial-gradient(circle at 50% 44%, rgba(68, 213, 255, 0.7), transparent 31%),
-    linear-gradient(180deg, #04264f 0%, #1169a7 46%, #042c63 100%);
+  color: #d2e9ff;
+  background: #030613;
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
   overflow: hidden;
+  isolation: isolate;
+}
+
+.shell::before,
+.shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -2;
+}
+
+.shell::before {
+  background:
+    radial-gradient(circle at 30% 40%, rgba(141, 76, 255, 0.1), transparent 20%),
+    radial-gradient(circle at 70% 60%, rgba(30, 123, 255, 0.05), transparent 25%);
+  filter: blur(70px);
+}
+
+.shell::after {
+  z-index: -1;
+  background:
+    radial-gradient(circle at center, transparent 50%, rgba(0, 0, 0, 0.8) 100%),
+    radial-gradient(circle at 50% 42%, rgba(24, 70, 150, 0.18), transparent 36%);
 }
 
 .dashboard {
@@ -42,98 +62,6 @@
   grid-area: nav;
   min-width: 0;
   align-self: end;
-}
-
-.topBar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.resourceStrip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: nowrap;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.resourceStrip::-webkit-scrollbar {
-  display: none;
-}
-
-.resourcePill {
-  height: 44px;
-  min-width: 126px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px 6px 6px;
-  border: 3px solid rgba(9, 23, 45, 0.72);
-  border-radius: 8px;
-  background: linear-gradient(180deg, #234870, #0b213b);
-  box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.22),
-    0 5px 0 rgba(3, 12, 27, 0.48);
-}
-
-.resourcePill strong {
-  flex: 1;
-  min-width: 0;
-  color: #ffffff;
-  font-size: 20px;
-  line-height: 1;
-  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
-}
-
-.resourceIcon {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  color: #ffffff;
-  border-radius: 8px;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-}
-
-.level .resourceIcon {
-  background: linear-gradient(180deg, #28c9ff, #1577c5);
-}
-
-.exp .resourceIcon {
-  background: linear-gradient(180deg, #43ef76, #12933c);
-}
-
-.coins .resourceIcon {
-  background: linear-gradient(180deg, #ffd95c, #e18a16);
-}
-
-.rp .resourceIcon {
-  background: linear-gradient(180deg, #ffe88d, #d79a18);
-}
-
-.gems .resourceIcon {
-  background: linear-gradient(180deg, #52ef83, #1eaa51);
-}
-
-.logout {
-  height: 42px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 3px solid rgba(9, 23, 45, 0.72);
-  background: linear-gradient(180deg, #446887, #193049);
-  color: #ffffff;
-  border-radius: 8px;
-  padding: 0 14px;
-  font-weight: 900;
-  cursor: pointer;
-  box-shadow: 0 5px 0 rgba(3, 12, 27, 0.48);
 }
 
 .lobby {
@@ -428,27 +356,6 @@
     height: 100%;
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
-  }
-
-  .topBar,
-  .resourceStrip {
-    align-items: center;
-  }
-
-  .topBar {
-    gap: 8px;
-  }
-
-  .resourcePill {
-    min-width: 112px;
-  }
-
-  .logout {
-    justify-content: center;
-    flex: 0 0 auto;
-    width: 46px;
-    padding: 0;
-    font-size: 0;
   }
 
   .lobby {
