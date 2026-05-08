@@ -1,0 +1,328 @@
+.profileBanner {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: 600px;
+  max-width: 56%;
+  height: 138px;
+  padding: 0;
+  text-align: left;
+  color: #ffffff;
+  clip-path: polygon(0 0, 100% 0, 91% 50%, 100% 100%, 0 100%);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.14) 25%, transparent 25%) 0 0 / 32px 32px,
+    linear-gradient(225deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%) 0 0 / 32px 32px,
+    linear-gradient(180deg, #3adb7c, #0fa852);
+  border: 3px solid rgba(13, 86, 46, 0.6);
+  cursor: pointer;
+  box-shadow: 0 8px 0 rgba(3, 36, 51, 0.28);
+}
+
+.profileBanner:focus-visible {
+  outline: 3px solid #fff2a3;
+  outline-offset: 3px;
+}
+
+.bannerArt {
+  position: absolute;
+  inset: 8px 150px 42px 18px;
+}
+
+.kingHead {
+  position: absolute;
+  left: 138px;
+  top: 2px;
+  width: 74px;
+  height: 74px;
+  border: 6px solid #d0a354;
+  clip-path: polygon(50% 0, 95% 22%, 82% 100%, 18% 100%, 5% 22%);
+  background: linear-gradient(180deg, #f4c879, #a86b3f);
+}
+
+.kingHead span {
+  position: absolute;
+  left: 22px;
+  top: 28px;
+  width: 28px;
+  height: 10px;
+  border-radius: 999px;
+  background: #74373a;
+  box-shadow: -16px -12px 0 -4px #74373a, 16px -12px 0 -4px #74373a;
+}
+
+.bannerBlocks span,
+.bannerBlocks::before,
+.bannerBlocks::after {
+  content: "";
+  position: absolute;
+  border: 4px solid #a9783e;
+  background: linear-gradient(180deg, #f2cf8d, #b98047);
+  box-shadow: 0 4px 0 rgba(72, 44, 26, 0.35);
+}
+
+.bannerBlocks span:nth-child(1) {
+  left: 0;
+  top: 8px;
+  width: 112px;
+  height: 54px;
+  clip-path: polygon(0 8%, 20% 0, 50% 8%, 80% 0, 100% 8%, 86% 100%, 14% 100%);
+}
+
+.bannerBlocks span:nth-child(2) {
+  left: 56px;
+  top: 60px;
+  width: 190px;
+  height: 20px;
+}
+
+.bannerBlocks span:nth-child(3) {
+  left: 260px;
+  top: 30px;
+  width: 44px;
+  height: 48px;
+}
+
+.bannerBlocks::before {
+  left: 8px;
+  top: 48px;
+  width: 24px;
+  height: 44px;
+}
+
+.bannerBlocks::after {
+  left: 272px;
+  top: 72px;
+  width: 24px;
+  height: 32px;
+}
+
+.playerPlate {
+  position: absolute;
+  left: 0;
+  right: 80px;
+  bottom: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 18px;
+  background: rgba(5, 14, 28, 0.78);
+}
+
+.playerPlate h1,
+.playerPlate p,
+.trophyPlate strong {
+  margin: 0;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.5);
+}
+
+.playerPlate h1 {
+  max-width: 290px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.playerPlate p {
+  max-width: 300px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.trophyPlate {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #ffd457;
+}
+
+.trophyPlate strong {
+  color: #ffe77c;
+  font-size: 22px;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(1, 12, 28, 0.72);
+}
+
+.profileModal {
+  width: min(1080px, 96vw);
+  max-height: min(680px, 92vh);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  color: #ffffff;
+  border: 4px solid rgba(205, 237, 255, 0.5);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08) 25%, transparent 25%) 0 0 / 48px 48px,
+    linear-gradient(180deg, #174d85, #062a55);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.modalHeader {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: rgba(4, 16, 35, 0.62);
+}
+
+.modalHeader p,
+.modalHeader h2 {
+  margin: 0;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+}
+
+.modalHeader p {
+  color: #9fe5ff;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.modalHeader h2 {
+  font-size: 30px;
+}
+
+.closeButton {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 3px solid rgba(205, 237, 255, 0.5);
+  border-radius: 8px;
+  color: #ffffff;
+  background: linear-gradient(180deg, #446887, #193049);
+  cursor: pointer;
+}
+
+.modalContent {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.detailPanel,
+.statPanel {
+  border: 3px solid rgba(205, 237, 255, 0.38);
+  border-radius: 8px;
+  background: rgba(3, 19, 44, 0.52);
+}
+
+.detailPanel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.detailItem,
+.statItem {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.detailItem {
+  grid-template-rows: auto auto;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(10, 47, 87, 0.72);
+}
+
+.detailItem svg,
+.statItem svg {
+  grid-row: span 2;
+  color: #9fe5ff;
+}
+
+.detailItem span,
+.statItem span {
+  color: #bfe9ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.detailItem strong,
+.statItem strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+}
+
+.statPanel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.statItem {
+  min-height: 72px;
+  padding: 8px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(51, 93, 130, 0.95), rgba(17, 43, 70, 0.95));
+}
+
+.statItem strong {
+  font-size: 22px;
+}
+
+@media (max-width: 980px) {
+  .profileBanner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    height: clamp(108px, 22vh, 138px);
+  }
+
+  .bannerArt {
+    inset: 8px 120px 42px 14px;
+    transform: scale(0.88);
+    transform-origin: left top;
+  }
+
+  .playerPlate {
+    right: 0;
+    height: 42px;
+    padding: 0 12px;
+  }
+
+  .playerPlate h1 {
+    max-width: 48vw;
+    font-size: 19px;
+  }
+
+  .playerPlate p {
+    max-width: 48vw;
+  }
+
+  .modalContent,
+  .statPanel {
+    grid-template-columns: 1fr;
+  }
+}
