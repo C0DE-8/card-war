@@ -265,7 +265,7 @@ const MyCards = () => {
     navigate("/login");
   };
 
-  const handleNav = async (id) => {
+  const handleNav = (id) => {
     if (id === "cards") {
       setActiveTab("all");
       return;
@@ -277,14 +277,7 @@ const MyCards = () => {
     }
 
     if (id === "battle") {
-      try {
-        const response = await api.post("/play/match/create");
-        const message = response.data?.message || "Match created.";
-        const matchId = response.data?.match?.id || response.data?.match_id;
-        toast.success(matchId ? `${message} Match #${matchId}` : message);
-      } catch (error) {
-        toast.error(error?.response?.data?.message || "Could not create match.");
-      }
+      navigate("/dashboard");
       return;
     }
 

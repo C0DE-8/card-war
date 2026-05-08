@@ -37,7 +37,7 @@
   margin: 0 auto;
   display: grid;
   gap: 10px;
-  padding-bottom: 6px;
+  padding-bottom: 86px;
 }
 
 .header {
@@ -531,8 +531,11 @@
 }
 
 .navSlot {
-  position: sticky;
+  position: fixed;
+  left: 50%;
   bottom: 0;
+  width: min(1180px, calc(100% - 24px));
+  transform: translateX(-50%);
   z-index: 20;
 }
 
