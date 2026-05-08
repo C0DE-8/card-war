@@ -8,9 +8,12 @@ export default function Matchmaking() {
   const navigate = useNavigate();
   const startedRef = useRef(false);
   const pollRef = useRef(null);
+  const startedAtRef = useRef(null);
   const [matchId, setMatchId] = useState(null);
   const [statusText, setStatusText] = useState("Starting matchmaking...");
   const [cancelling, setCancelling] = useState(false);
+  const [botWaitMs, setBotWaitMs] = useState(10000);
+  const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,12 +37,21 @@ export default function Matchmaking() {
         }
 
         setMatchId(nextMatchId);
+        setBotWaitMs(Number(data?.bot_wait_ms || 10000));
+        const serverElapsed = Number(data?.match?.waiting_elapsed_ms || 0);
+        setElapsedMs(serverElapsed);
+        startedAtRef.current = Date.now() - serverElapsed;
         setStatusText("Looking for a player...");
 
         pollRef.current = setInterval(async () => {
           try {
             const matchData = await getMatch(nextMatchId);
             const match = matchData?.match;
+            if (matchData?.waiting_elapsed_ms != null) {
+              const nextServerElapsed = Number(matchData.waiting_elapsed_ms || 0);
+              setElapsedMs(nextServerElapsed);
+              startedAtRef.current = Date.now() - nextServerElapsed;
+            }
             if (match?.status === "in_progress") {
               clearInterval(pollRef.current);
               navigate(`/match/${nextMatchId}`, { replace: true });
@@ -68,6 +80,28 @@ export default function Matchmaking() {
     };
   }, [navigate]);
 
+  useEffect(() => {
+    if (!matchId) {
+      return undefined;
+    }
+
+    if (!startedAtRef.current) {
+      startedAtRef.current = Date.now();
+    }
+
+    const timer = setInterval(() => {
+      const nextElapsed = Date.now() - startedAtRef.current;
+      setElapsedMs(nextElapsed);
+      if (nextElapsed >= botWaitMs) {
+        setStatusText("Bot fallback is kicking in...");
+      }
+    }, 250);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [botWaitMs, matchId]);
+
   const handleCancel = async () => {
     if (!matchId) {
       navigate("/dashboard", { replace: true });
@@ -86,6 +120,10 @@ export default function Matchmaking() {
     }
   };
 
+  const remainingMs = Math.max(0, botWaitMs - elapsedMs);
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
   return (
     <div className={styles.shell}>
       <section className={styles.panel}>
@@ -93,6 +131,11 @@ export default function Matchmaking() {
         <p className={styles.text}>
           {statusText} If no real player joins shortly, a same-level bot will enter the match.
         </p>
+        <div className={styles.timerBox}>
+          <p>Bot fallback</p>
+          <strong>{remainingSeconds > 0 ? `${remainingSeconds}s` : "Now"}</strong>
+          <span>{elapsedSeconds}s elapsed</span>
+        </div>
         <div className={styles.spinner} aria-hidden="true" />
         <div className={styles.actions}>
           <button

@@ -1,25 +1,19 @@
 const express = require("express");
 const db = require("../config/db");
 const { authenticateToken } = require("../middleware/authMiddleware");
+const {
+  BOT_WAIT_MS,
+  attachBotIfMatchStillWaiting,
+  clearBotFallback,
+  getRandomBotDeckCardIdTx,
+  isGeneratedBotPlayerTx,
+  scheduleBotFallback
+} = require("../utils/botMatchmaking");
 
 const router = express.Router();
 
 const STAT_SEQUENCE = ["power", "magic", "skill"];
 const ROUND_TARGET = 2;
-const BOT_WAIT_MS = 10000;
-const BOT_EMAIL_DOMAIN = "bot.card-war.local";
-const BOT_DECK_SIZE = 10;
-const botFallbackTimers = new Map();
-
-// Clears a scheduled bot fallback when a match starts or is cancelled.
-function clearBotFallback(matchId) {
-  const key = Number(matchId);
-  const timer = botFallbackTimers.get(key);
-  if (timer) {
-    clearTimeout(timer);
-    botFallbackTimers.delete(key);
-  }
-}
 
 // Rolls an integer within a card stat range.
 function rollRandomInt(minValue, maxValue) {
@@ -141,18 +135,6 @@ async function ensureRoundOneExistsTx(connection, matchId) {
   );
 }
 
-// Checks whether a player row is a generated bot account.
-async function isGeneratedBotPlayerTx(connection, playerId) {
-  const [rows] = await connection.execute(
-    `SELECT id
-     FROM players
-     WHERE id = ? AND email LIKE ?
-     LIMIT 1`,
-    [playerId, `%@${BOT_EMAIL_DOMAIN}`]
-  );
-  return rows.length > 0;
-}
-
 // Fetches submitted moves for a round and stat inside a transaction.
 async function getMovesForRoundStatTx(connection, roundId, statType) {
   const [movesRows] = await connection.execute(
@@ -173,109 +155,6 @@ async function getMovesForRoundStatTx(connection, roundId, statType) {
     [roundId, statType]
   );
   return movesRows;
-}
-
-// Picks a random character card from a generated bot deck.
-async function getRandomBotDeckCardIdTx(connection, deckId) {
-  const [rows] = await connection.execute(
-    `SELECT c.id
-     FROM player_deck_cards pdc
-     JOIN cards c ON c.id = pdc.card_id
-     WHERE pdc.deck_id = ? AND c.type = 'character'
-     ORDER BY RAND()
-     LIMIT 1`,
-    [deckId]
-  );
-  return rows[0]?.id || null;
-}
-
-// Creates a generated bot player with a same-level random deck.
-async function createGeneratedBotTx(connection, playerLevel) {
-  const level = Math.max(1, Number(playerLevel) || 1);
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  const username = `Bot-${level}-${suffix}`;
-  const email = `bot+${suffix}@${BOT_EMAIL_DOMAIN}`;
-
-  const [playerResult] = await connection.execute(
-    `INSERT INTO players
-     (username, email, password, level, exp, rp, coins, gems, wins, losses, is_admin)
-     VALUES (?, ?, ?, ?, 0, 50, 0, 0, 0, 0, 0)`,
-    [username, email, "generated-bot-account", level]
-  );
-  const botPlayerId = playerResult.insertId;
-
-  const [cardRows] = await connection.execute(
-    `SELECT id, card_level_cap
-     FROM cards
-     WHERE is_active = 1 AND type = 'character'
-     ORDER BY RAND()
-     LIMIT ${BOT_DECK_SIZE}`
-  );
-
-  if (cardRows.length === 0) {
-    throw new Error("NO_BOT_CARDS_AVAILABLE");
-  }
-
-  const [deckResult] = await connection.execute(
-    `INSERT INTO player_decks (player_id, name, is_active)
-     VALUES (?, 'Bot Deck', 1)`,
-    [botPlayerId]
-  );
-  const botDeckId = deckResult.insertId;
-
-  for (let index = 0; index < cardRows.length; index += 1) {
-    const card = cardRows[index];
-    const currentLevel = Math.min(level, Number(card.card_level_cap || level));
-    const statBonus = Math.max(0, currentLevel - 1);
-
-    const [playerCardResult] = await connection.execute(
-      `INSERT INTO player_cards (player_id, card_id, quantity)
-       VALUES (?, ?, 1)`,
-      [botPlayerId, card.id]
-    );
-
-    await connection.execute(
-      `INSERT INTO player_card_progress
-       (
-         player_card_id,
-         player_id,
-         card_id,
-         current_level,
-         power_min_bonus,
-         power_max_bonus,
-         magic_min_bonus,
-         magic_max_bonus,
-         skill_min_bonus,
-         skill_max_bonus
-       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        playerCardResult.insertId,
-        botPlayerId,
-        card.id,
-        currentLevel,
-        statBonus,
-        statBonus,
-        statBonus,
-        statBonus,
-        statBonus,
-        statBonus
-      ]
-    );
-
-    await connection.execute(
-      `INSERT INTO player_deck_cards (deck_id, card_id, slot_number)
-       VALUES (?, ?, ?)`,
-      [botDeckId, card.id, index + 1]
-    );
-  }
-
-  return {
-    player_id: botPlayerId,
-    deck_id: botDeckId,
-    username,
-    level
-  };
 }
 
 // Submits one battle move for a human or generated bot.
@@ -424,6 +303,7 @@ async function getMatchSummary(matchId) {
       bm.player_one_round_wins,
       bm.player_two_round_wins,
       bm.current_round_number,
+      TIMESTAMPDIFF(MICROSECOND, bm.created_at, NOW()) / 1000 AS waiting_elapsed_ms,
       bm.created_at,
       bm.updated_at
      FROM battle_matches bm
@@ -463,88 +343,6 @@ async function getMatchSummary(matchId) {
     current_round: currentRound,
     submitted_moves: submittedMoves
   };
-}
-
-// Adds a generated bot if the match is still open.
-async function attachBotIfMatchStillWaiting(matchId, playerId) {
-  let connection;
-  try {
-    connection = await db.getConnection();
-    await connection.beginTransaction();
-
-    const [matchRows] = await connection.execute(
-      `SELECT bm.*, p.level AS player_one_level
-       FROM battle_matches bm
-       JOIN players p ON p.id = bm.player_one_id
-       WHERE bm.id = ?
-       LIMIT 1 FOR UPDATE`,
-      [matchId]
-    );
-
-    const match = matchRows[0];
-    if (!match) {
-      throw new Error("MATCH_NOT_FOUND");
-    }
-
-    if (match.player_one_id !== playerId) {
-      await connection.commit();
-      return { matched_with_bot: false };
-    }
-
-    if (match.status !== "waiting" || match.player_two_id) {
-      await connection.commit();
-      return { matched_with_bot: false };
-    }
-
-    const bot = await createGeneratedBotTx(connection, match.player_one_level);
-    await connection.execute(
-      `UPDATE battle_matches
-       SET
-         player_two_id = ?,
-         player_two_deck_id = ?,
-         status = 'in_progress',
-         current_round_number = 1,
-         updated_at = NOW()
-       WHERE id = ? AND status = 'waiting'`,
-      [bot.player_id, bot.deck_id, matchId]
-    );
-    await ensureRoundOneExistsTx(connection, matchId);
-
-    await connection.commit();
-    clearBotFallback(matchId);
-    return {
-      matched_with_bot: true,
-      bot
-    };
-  } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
-    throw error;
-  } finally {
-    if (connection) {
-      connection.release();
-    }
-  }
-}
-
-// Schedules the generated bot fallback for a waiting match.
-function scheduleBotFallback(matchId, playerId) {
-  const key = Number(matchId);
-  if (botFallbackTimers.has(key)) {
-    return;
-  }
-
-  const timer = setTimeout(async () => {
-    botFallbackTimers.delete(key);
-    try {
-      await attachBotIfMatchStillWaiting(key, playerId);
-    } catch (error) {
-      console.error("Bot fallback error:", error);
-    }
-  }, BOT_WAIT_MS);
-
-  botFallbackTimers.set(key, timer);
 }
 
 // Returns the next stat clash after the current stat.
@@ -683,6 +481,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
               ? "A real opponent joined your match."
               : "You already have an active or waiting match.",
           matched_with_bot: false,
+          bot_wait_ms: BOT_WAIT_MS,
           ...existingSummary
         });
       }
@@ -692,6 +491,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
         success: true,
         message: "You already have an active or waiting match.",
         matched_with_bot: false,
+        bot_wait_ms: BOT_WAIT_MS,
         ...matchSummary
       });
     }
@@ -734,6 +534,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
       return res.status(200).json({
         success: true,
         message: "Joined open match successfully.",
+        bot_wait_ms: BOT_WAIT_MS,
         ...matchSummary
       });
     }
@@ -763,6 +564,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
       success: true,
       message: "Open match created. Looking for opponent.",
       matched_with_bot: false,
+      bot_wait_ms: BOT_WAIT_MS,
       ...matchSummary
     });
   } catch (error) {
@@ -876,7 +678,7 @@ router.get("/match/:id", authenticateToken, async (req, res) => {
       });
     }
 
-    const matchSummary = await getMatchSummary(matchId);
+    let matchSummary = await getMatchSummary(matchId);
     if (!matchSummary) {
       return res.status(404).json({
         success: false,
@@ -884,12 +686,24 @@ router.get("/match/:id", authenticateToken, async (req, res) => {
       });
     }
 
-    const { match, current_round: currentRound } = matchSummary;
+    let { match, current_round: currentRound } = matchSummary;
     if (match.player_one_id !== playerId && match.player_two_id !== playerId) {
       return res.status(403).json({
         success: false,
         message: "You are not a participant in this match."
       });
+    }
+
+    if (
+      match.status === "waiting" &&
+      match.player_one_id === playerId &&
+      !match.player_two_id &&
+      Number(match.waiting_elapsed_ms || 0) >= BOT_WAIT_MS
+    ) {
+      await attachBotIfMatchStillWaiting(matchId, playerId);
+      matchSummary = await getMatchSummary(matchId);
+      match = matchSummary.match;
+      currentRound = matchSummary.current_round;
     }
 
     return res.status(200).json({
@@ -906,6 +720,8 @@ router.get("/match/:id", authenticateToken, async (req, res) => {
         player_two_round_wins: match.player_two_round_wins,
         winner_player_id: match.winner_player_id
       },
+      bot_wait_ms: BOT_WAIT_MS,
+      waiting_elapsed_ms: Number(match.waiting_elapsed_ms || 0),
       current_round: currentRound,
       submitted_moves: matchSummary.submitted_moves
     });
