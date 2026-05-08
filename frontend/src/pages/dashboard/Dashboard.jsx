@@ -1,6 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "react-hot-toast";
 import {
   BookOpen,
   Crown,
@@ -92,22 +91,12 @@ const Dashboard = () => {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    toast.success("Logged out successfully");
     navigate("/login");
   };
 
-  const handleBattle = async () => {
-    try {
-      setBattleLoading(true);
-      const response = await api.post("/play/match/create");
-      const message = response.data?.message || "Match created.";
-      const matchId = response.data?.match?.id || response.data?.match_id;
-      toast.success(matchId ? `${message} Match #${matchId}` : message);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || "Could not create match.");
-    } finally {
-      setBattleLoading(false);
-    }
+  const handleBattle = () => {
+    setBattleLoading(true);
+    navigate("/matchmaking");
   };
 
   const handleNav = (id) => {

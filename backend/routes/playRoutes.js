@@ -6,6 +6,20 @@ const router = express.Router();
 
 const STAT_SEQUENCE = ["power", "magic", "skill"];
 const ROUND_TARGET = 2;
+const BOT_WAIT_MS = 10000;
+const BOT_EMAIL_DOMAIN = "bot.card-war.local";
+const BOT_DECK_SIZE = 10;
+const botFallbackTimers = new Map();
+
+// Clears a scheduled bot fallback when a match starts or is cancelled.
+function clearBotFallback(matchId) {
+  const key = Number(matchId);
+  const timer = botFallbackTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    botFallbackTimers.delete(key);
+  }
+}
 
 // Rolls an integer within a card stat range.
 function rollRandomInt(minValue, maxValue) {
@@ -127,6 +141,247 @@ async function ensureRoundOneExistsTx(connection, matchId) {
   );
 }
 
+// Checks whether a player row is a generated bot account.
+async function isGeneratedBotPlayerTx(connection, playerId) {
+  const [rows] = await connection.execute(
+    `SELECT id
+     FROM players
+     WHERE id = ? AND email LIKE ?
+     LIMIT 1`,
+    [playerId, `%@${BOT_EMAIL_DOMAIN}`]
+  );
+  return rows.length > 0;
+}
+
+// Fetches submitted moves for a round and stat inside a transaction.
+async function getMovesForRoundStatTx(connection, roundId, statType) {
+  const [movesRows] = await connection.execute(
+    `SELECT
+      m.id,
+      m.player_id,
+      m.card_id,
+      m.base_value,
+      m.rolled_value,
+      m.cost_value,
+      m.submission_order,
+      c.name AS card_name,
+      c.element_type
+     FROM battle_round_moves m
+     JOIN cards c ON c.id = m.card_id
+     WHERE m.round_id = ? AND m.stat_type = ?
+     ORDER BY m.submission_order ASC`,
+    [roundId, statType]
+  );
+  return movesRows;
+}
+
+// Picks a random character card from a generated bot deck.
+async function getRandomBotDeckCardIdTx(connection, deckId) {
+  const [rows] = await connection.execute(
+    `SELECT c.id
+     FROM player_deck_cards pdc
+     JOIN cards c ON c.id = pdc.card_id
+     WHERE pdc.deck_id = ? AND c.type = 'character'
+     ORDER BY RAND()
+     LIMIT 1`,
+    [deckId]
+  );
+  return rows[0]?.id || null;
+}
+
+// Creates a generated bot player with a same-level random deck.
+async function createGeneratedBotTx(connection, playerLevel) {
+  const level = Math.max(1, Number(playerLevel) || 1);
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const username = `Bot-${level}-${suffix}`;
+  const email = `bot+${suffix}@${BOT_EMAIL_DOMAIN}`;
+
+  const [playerResult] = await connection.execute(
+    `INSERT INTO players
+     (username, email, password, level, exp, rp, coins, gems, wins, losses, is_admin)
+     VALUES (?, ?, ?, ?, 0, 50, 0, 0, 0, 0, 0)`,
+    [username, email, "generated-bot-account", level]
+  );
+  const botPlayerId = playerResult.insertId;
+
+  const [cardRows] = await connection.execute(
+    `SELECT id, card_level_cap
+     FROM cards
+     WHERE is_active = 1 AND type = 'character'
+     ORDER BY RAND()
+     LIMIT ${BOT_DECK_SIZE}`
+  );
+
+  if (cardRows.length === 0) {
+    throw new Error("NO_BOT_CARDS_AVAILABLE");
+  }
+
+  const [deckResult] = await connection.execute(
+    `INSERT INTO player_decks (player_id, name, is_active)
+     VALUES (?, 'Bot Deck', 1)`,
+    [botPlayerId]
+  );
+  const botDeckId = deckResult.insertId;
+
+  for (let index = 0; index < cardRows.length; index += 1) {
+    const card = cardRows[index];
+    const currentLevel = Math.min(level, Number(card.card_level_cap || level));
+    const statBonus = Math.max(0, currentLevel - 1);
+
+    const [playerCardResult] = await connection.execute(
+      `INSERT INTO player_cards (player_id, card_id, quantity)
+       VALUES (?, ?, 1)`,
+      [botPlayerId, card.id]
+    );
+
+    await connection.execute(
+      `INSERT INTO player_card_progress
+       (
+         player_card_id,
+         player_id,
+         card_id,
+         current_level,
+         power_min_bonus,
+         power_max_bonus,
+         magic_min_bonus,
+         magic_max_bonus,
+         skill_min_bonus,
+         skill_max_bonus
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        playerCardResult.insertId,
+        botPlayerId,
+        card.id,
+        currentLevel,
+        statBonus,
+        statBonus,
+        statBonus,
+        statBonus,
+        statBonus,
+        statBonus
+      ]
+    );
+
+    await connection.execute(
+      `INSERT INTO player_deck_cards (deck_id, card_id, slot_number)
+       VALUES (?, ?, ?)`,
+      [botDeckId, card.id, index + 1]
+    );
+  }
+
+  return {
+    player_id: botPlayerId,
+    deck_id: botDeckId,
+    username,
+    level
+  };
+}
+
+// Submits one battle move for a human or generated bot.
+async function submitMoveForStatTx(connection, match, round, playerId, cardId, currentStat) {
+  const playerDeckId =
+    playerId === match.player_one_id ? match.player_one_deck_id : match.player_two_deck_id;
+  const [deckCardRows] = await connection.execute(
+    `SELECT c.*
+     FROM player_deck_cards pdc
+     JOIN cards c ON c.id = pdc.card_id
+     WHERE pdc.deck_id = ?
+       AND c.id = ?
+       AND c.type = 'character'
+     LIMIT 1`,
+    [playerDeckId, cardId]
+  );
+  if (deckCardRows.length === 0) {
+    throw new Error("CARD_NOT_IN_ACTIVE_DECK");
+  }
+  const selectedCard = deckCardRows[0];
+
+  const [existingMoveRows] = await connection.execute(
+    `SELECT id
+     FROM battle_round_moves
+     WHERE round_id = ? AND player_id = ? AND stat_type = ?
+     LIMIT 1`,
+    [round.id, playerId, currentStat]
+  );
+  if (existingMoveRows.length > 0) {
+    throw new Error("MOVE_ALREADY_SUBMITTED");
+  }
+
+  const [alreadySubmittedRows] = await connection.execute(
+    `SELECT COUNT(*) AS count_rows
+     FROM battle_round_moves
+     WHERE round_id = ? AND stat_type = ?`,
+    [round.id, currentStat]
+  );
+  const submissionOrder = Number(alreadySubmittedRows[0].count_rows) + 1;
+
+  const [decayRows] = await connection.execute(
+    `SELECT total_decay
+     FROM battle_match_card_decay
+     WHERE match_id = ? AND player_id = ? AND card_id = ? AND stat_type = ?
+     LIMIT 1`,
+    [match.id, playerId, cardId, currentStat]
+  );
+  const existingDecay = decayRows.length > 0 ? Number(decayRows[0].total_decay) : 0;
+
+  const [progressRows] = await connection.execute(
+    `SELECT
+      pc.id AS player_card_id,
+      pcp.id AS player_card_progress_id,
+      pcp.current_level,
+      pcp.power_min_bonus,
+      pcp.power_max_bonus,
+      pcp.magic_min_bonus,
+      pcp.magic_max_bonus,
+      pcp.skill_min_bonus,
+      pcp.skill_max_bonus
+     FROM player_cards pc
+     LEFT JOIN player_card_progress pcp
+       ON pcp.player_card_id = pc.id
+      AND pcp.player_id = pc.player_id
+      AND pcp.card_id = pc.card_id
+     WHERE pc.player_id = ? AND pc.card_id = ?
+     LIMIT 1`,
+    [playerId, cardId]
+  );
+
+  const progressRow = progressRows.length > 0 ? progressRows[0] : null;
+  const statRange = computeEffectiveStatRange(selectedCard, progressRow, currentStat);
+  const baseValue = Number(statRange.effective_max || 0);
+  const rolledValue = rollRandomInt(statRange.effective_min, statRange.effective_max);
+
+  await connection.execute(
+    `INSERT INTO battle_round_moves
+     (
+       round_id,
+       player_id,
+       stat_type,
+       card_id,
+       base_value,
+       rolled_value,
+       cost_value,
+       advantage_boost,
+       final_value,
+       is_winner,
+       did_decay_apply,
+       submission_order
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?)`,
+    [
+      round.id,
+      playerId,
+      currentStat,
+      cardId,
+      baseValue,
+      rolledValue,
+      Number(selectedCard.cost || 1),
+      rolledValue - existingDecay,
+      submissionOrder
+    ]
+  );
+}
+
 // Fetches all submitted moves for a battle round.
 async function getRoundMoves(roundId) {
   const [moves] = await db.execute(
@@ -208,6 +463,88 @@ async function getMatchSummary(matchId) {
     current_round: currentRound,
     submitted_moves: submittedMoves
   };
+}
+
+// Adds a generated bot if the match is still open.
+async function attachBotIfMatchStillWaiting(matchId, playerId) {
+  let connection;
+  try {
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [matchRows] = await connection.execute(
+      `SELECT bm.*, p.level AS player_one_level
+       FROM battle_matches bm
+       JOIN players p ON p.id = bm.player_one_id
+       WHERE bm.id = ?
+       LIMIT 1 FOR UPDATE`,
+      [matchId]
+    );
+
+    const match = matchRows[0];
+    if (!match) {
+      throw new Error("MATCH_NOT_FOUND");
+    }
+
+    if (match.player_one_id !== playerId) {
+      await connection.commit();
+      return { matched_with_bot: false };
+    }
+
+    if (match.status !== "waiting" || match.player_two_id) {
+      await connection.commit();
+      return { matched_with_bot: false };
+    }
+
+    const bot = await createGeneratedBotTx(connection, match.player_one_level);
+    await connection.execute(
+      `UPDATE battle_matches
+       SET
+         player_two_id = ?,
+         player_two_deck_id = ?,
+         status = 'in_progress',
+         current_round_number = 1,
+         updated_at = NOW()
+       WHERE id = ? AND status = 'waiting'`,
+      [bot.player_id, bot.deck_id, matchId]
+    );
+    await ensureRoundOneExistsTx(connection, matchId);
+
+    await connection.commit();
+    clearBotFallback(matchId);
+    return {
+      matched_with_bot: true,
+      bot
+    };
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    throw error;
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+}
+
+// Schedules the generated bot fallback for a waiting match.
+function scheduleBotFallback(matchId, playerId) {
+  const key = Number(matchId);
+  if (botFallbackTimers.has(key)) {
+    return;
+  }
+
+  const timer = setTimeout(async () => {
+    botFallbackTimers.delete(key);
+    try {
+      await attachBotIfMatchStillWaiting(key, playerId);
+    } catch (error) {
+      console.error("Bot fallback error:", error);
+    }
+  }, BOT_WAIT_MS);
+
+  botFallbackTimers.set(key, timer);
 }
 
 // Returns the next stat clash after the current stat.
@@ -332,10 +669,29 @@ router.post("/match/create", authenticateToken, async (req, res) => {
     const existingMatch = await getExistingUnfinishedMatchByPlayerIdTx(connection, playerId);
     if (existingMatch) {
       await connection.commit();
+      connection.release();
+      connection = null;
+
+      const existingSummary = await getMatchSummary(existingMatch.id);
+      if (existingSummary?.match?.status === "waiting") {
+        scheduleBotFallback(existingMatch.id, playerId);
+        const matchedWithRealOpponent =
+          existingSummary?.match?.status === "in_progress";
+        return res.status(200).json({
+          success: true,
+          message: matchedWithRealOpponent
+              ? "A real opponent joined your match."
+              : "You already have an active or waiting match.",
+          matched_with_bot: false,
+          ...existingSummary
+        });
+      }
+
       const matchSummary = await getMatchSummary(existingMatch.id);
       return res.status(200).json({
         success: true,
         message: "You already have an active or waiting match.",
+        matched_with_bot: false,
         ...matchSummary
       });
     }
@@ -368,6 +724,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
 
       joinedMatchId = waitingMatch.id;
       await ensureRoundOneExistsTx(connection, joinedMatchId);
+      clearBotFallback(joinedMatchId);
       break;
     }
 
@@ -397,11 +754,15 @@ router.post("/match/create", authenticateToken, async (req, res) => {
     const createdMatchId = createResult.insertId;
 
     await connection.commit();
+    connection.release();
+    connection = null;
 
+    scheduleBotFallback(createdMatchId, playerId);
     const matchSummary = await getMatchSummary(createdMatchId);
     return res.status(201).json({
       success: true,
-      message: "Open match created. Waiting for opponent.",
+      message: "Open match created. Looking for opponent.",
+      matched_with_bot: false,
       ...matchSummary
     });
   } catch (error) {
@@ -412,6 +773,88 @@ router.post("/match/create", authenticateToken, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error while creating match."
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+});
+
+// Cancels a waiting match before an opponent joins.
+router.post("/match/:id/cancel", authenticateToken, async (req, res) => {
+  let connection;
+
+  try {
+    const matchId = Number(req.params.id);
+    const playerId = req.user.id;
+
+    if (!matchId || Number.isNaN(matchId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid match id is required."
+      });
+    }
+
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [matchRows] = await connection.execute(
+      `SELECT *
+       FROM battle_matches
+       WHERE id = ?
+       LIMIT 1 FOR UPDATE`,
+      [matchId]
+    );
+
+    if (matchRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Match not found."
+      });
+    }
+
+    const match = matchRows[0];
+    if (match.player_one_id !== playerId) {
+      await connection.rollback();
+      return res.status(403).json({
+        success: false,
+        message: "Only the player who started matchmaking can cancel it."
+      });
+    }
+
+    if (match.status !== "waiting" || match.player_two_id) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Match has already started and cannot be cancelled."
+      });
+    }
+
+    await connection.execute(
+      `UPDATE battle_matches
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE id = ?`,
+      [matchId]
+    );
+
+    await connection.commit();
+    clearBotFallback(matchId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Matchmaking cancelled.",
+      match_id: matchId
+    });
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    console.error("Cancel match error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while cancelling matchmaking."
     });
   } finally {
     if (connection) {
@@ -564,132 +1007,47 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
     }
     const currentStat = round.status;
 
-    const playerDeckId =
-      playerId === match.player_one_id ? match.player_one_deck_id : match.player_two_deck_id;
-    const [deckCardRows] = await connection.execute(
-      `SELECT c.*
-       FROM player_deck_cards pdc
-       JOIN cards c ON c.id = pdc.card_id
-       WHERE pdc.deck_id = ?
-         AND c.id = ?
-         AND c.type = 'character'
-       LIMIT 1`,
-      [playerDeckId, cardId]
-    );
-    if (deckCardRows.length === 0) {
+    try {
+      await submitMoveForStatTx(connection, match, round, playerId, cardId, currentStat);
+    } catch (moveError) {
       await connection.rollback();
+      const message =
+        moveError.message === "MOVE_ALREADY_SUBMITTED"
+          ? "You already submitted for this stat clash."
+          : "Selected card is not a character card in your active deck.";
       return res.status(400).json({
         success: false,
-        message: "Selected card is not a character card in your active deck."
-      });
-    }
-    const selectedCard = deckCardRows[0];
-
-    const [existingMoveRows] = await connection.execute(
-      `SELECT id
-       FROM battle_round_moves
-       WHERE round_id = ? AND player_id = ? AND stat_type = ?
-       LIMIT 1`,
-      [round.id, playerId, currentStat]
-    );
-    if (existingMoveRows.length > 0) {
-      await connection.rollback();
-      return res.status(400).json({
-        success: false,
-        message: "You already submitted for this stat clash."
+        message
       });
     }
 
-    const [alreadySubmittedRows] = await connection.execute(
-      `SELECT COUNT(*) AS count_rows
-       FROM battle_round_moves
-       WHERE round_id = ? AND stat_type = ?`,
-      [round.id, currentStat]
-    );
-    const submissionOrder = Number(alreadySubmittedRows[0].count_rows) + 1;
+    let movesRows = await getMovesForRoundStatTx(connection, round.id, currentStat);
 
-    const [decayRows] = await connection.execute(
-      `SELECT total_decay
-       FROM battle_match_card_decay
-       WHERE match_id = ? AND player_id = ? AND card_id = ? AND stat_type = ?
-       LIMIT 1`,
-      [matchId, playerId, cardId, currentStat]
-    );
-    const existingDecay = decayRows.length > 0 ? Number(decayRows[0].total_decay) : 0;
+    if (movesRows.length < 2) {
+      const opponentPlayerId =
+        playerId === match.player_one_id ? match.player_two_id : match.player_one_id;
+      const opponentDeckId =
+        opponentPlayerId === match.player_one_id
+          ? match.player_one_deck_id
+          : match.player_two_deck_id;
+      const opponentIsBot = await isGeneratedBotPlayerTx(connection, opponentPlayerId);
 
-    const [progressRows] = await connection.execute(
-      `SELECT
-        pc.id AS player_card_id,
-        pcp.id AS player_card_progress_id,
-        pcp.current_level,
-        pcp.power_min_bonus,
-        pcp.power_max_bonus,
-        pcp.magic_min_bonus,
-        pcp.magic_max_bonus,
-        pcp.skill_min_bonus,
-        pcp.skill_max_bonus
-       FROM player_cards pc
-       LEFT JOIN player_card_progress pcp
-         ON pcp.player_card_id = pc.id
-        AND pcp.player_id = pc.player_id
-        AND pcp.card_id = pc.card_id
-       WHERE pc.player_id = ? AND pc.card_id = ?
-       LIMIT 1`,
-      [playerId, cardId]
-    );
-
-    const progressRow = progressRows.length > 0 ? progressRows[0] : null;
-    const statRange = computeEffectiveStatRange(selectedCard, progressRow, currentStat);
-    const baseValue = Number(statRange.effective_max || 0);
-    const rolledValue = rollRandomInt(statRange.effective_min, statRange.effective_max);
-
-    await connection.execute(
-      `INSERT INTO battle_round_moves
-       (
-         round_id,
-         player_id,
-         stat_type,
-         card_id,
-         base_value,
-         rolled_value,
-         cost_value,
-         advantage_boost,
-         final_value,
-         is_winner,
-         did_decay_apply,
-         submission_order
-       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?)`,
-      [
-        round.id,
-        playerId,
-        currentStat,
-        cardId,
-        baseValue,
-        rolledValue,
-        Number(selectedCard.cost || 1),
-        rolledValue - existingDecay,
-        submissionOrder
-      ]
-    );
-
-    const [movesRows] = await connection.execute(
-      `SELECT
-        m.id,
-        m.player_id,
-        m.card_id,
-        m.base_value,
-        m.rolled_value,
-        m.cost_value,
-        m.submission_order,
-        c.name AS card_name,
-        c.element_type
-       FROM battle_round_moves m
-       JOIN cards c ON c.id = m.card_id
-       WHERE m.round_id = ? AND m.stat_type = ?
-       ORDER BY m.submission_order ASC`,
-      [round.id, currentStat]
-    );
+      if (opponentIsBot) {
+        const botCardId = await getRandomBotDeckCardIdTx(connection, opponentDeckId);
+        if (!botCardId) {
+          throw new Error("BOT_CARD_NOT_FOUND");
+        }
+        await submitMoveForStatTx(
+          connection,
+          match,
+          round,
+          opponentPlayerId,
+          botCardId,
+          currentStat
+        );
+        movesRows = await getMovesForRoundStatTx(connection, round.id, currentStat);
+      }
+    }
 
     if (movesRows.length < 2) {
       await connection.commit();

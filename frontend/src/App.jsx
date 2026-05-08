@@ -9,6 +9,8 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import styles from "./App.module.css";
 import AdminCards from "./pages/admin/AdminCards";
 import MyCards from "./pages/cards/MyCards";
+import Matchmaking from "./pages/battle/Matchmaking";
+import MatchPage from "./pages/battle/MatchPage";
 
 function App() {
   return (
@@ -60,6 +62,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <MyCards />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/matchmaking"
+            element={
+              <ProtectedRoute>
+                <Matchmaking />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/match/:id"
+            element={
+              <ProtectedRoute>
+                <MatchPage />
               </ProtectedRoute>
             }
           />
