@@ -6,9 +6,9 @@ import styles from "./Battle.module.css";
 
 export default function Matchmaking() {
   const navigate = useNavigate();
-  const startedRef = useRef(false);
   const pollRef = useRef(null);
-  const startedAtRef = useRef(null);
+  const localStartedAtRef = useRef(Date.now());
+  const serverStartedAtRef = useRef(null);
   const [matchId, setMatchId] = useState(null);
   const [statusText, setStatusText] = useState("Starting matchmaking...");
   const [cancelling, setCancelling] = useState(false);
@@ -19,9 +19,6 @@ export default function Matchmaking() {
     let cancelled = false;
 
     const start = async () => {
-      if (startedRef.current) return;
-      startedRef.current = true;
-
       try {
         const data = await createMatch();
         if (cancelled) return;
@@ -40,7 +37,7 @@ export default function Matchmaking() {
         setBotWaitMs(Number(data?.bot_wait_ms || 10000));
         const serverElapsed = Number(data?.match?.waiting_elapsed_ms || 0);
         setElapsedMs(serverElapsed);
-        startedAtRef.current = Date.now() - serverElapsed;
+        serverStartedAtRef.current = Date.now() - serverElapsed;
         setStatusText("Looking for a player...");
 
         pollRef.current = setInterval(async () => {
@@ -50,7 +47,7 @@ export default function Matchmaking() {
             if (matchData?.waiting_elapsed_ms != null) {
               const nextServerElapsed = Number(matchData.waiting_elapsed_ms || 0);
               setElapsedMs(nextServerElapsed);
-              startedAtRef.current = Date.now() - nextServerElapsed;
+              serverStartedAtRef.current = Date.now() - nextServerElapsed;
             }
             if (match?.status === "in_progress") {
               clearInterval(pollRef.current);
@@ -81,16 +78,9 @@ export default function Matchmaking() {
   }, [navigate]);
 
   useEffect(() => {
-    if (!matchId) {
-      return undefined;
-    }
-
-    if (!startedAtRef.current) {
-      startedAtRef.current = Date.now();
-    }
-
     const timer = setInterval(() => {
-      const nextElapsed = Date.now() - startedAtRef.current;
+      const startTime = serverStartedAtRef.current || localStartedAtRef.current;
+      const nextElapsed = Date.now() - startTime;
       setElapsedMs(nextElapsed);
       if (nextElapsed >= botWaitMs) {
         setStatusText("Bot fallback is kicking in...");
@@ -100,7 +90,7 @@ export default function Matchmaking() {
     return () => {
       clearInterval(timer);
     };
-  }, [botWaitMs, matchId]);
+  }, [botWaitMs]);
 
   const handleCancel = async () => {
     if (!matchId) {

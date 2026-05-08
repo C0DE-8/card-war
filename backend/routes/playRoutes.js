@@ -147,7 +147,8 @@ async function getMovesForRoundStatTx(connection, roundId, statType) {
       m.cost_value,
       m.submission_order,
       c.name AS card_name,
-      c.element_type
+      c.element_type,
+      c.image_path
      FROM battle_round_moves m
      JOIN cards c ON c.id = m.card_id
      WHERE m.round_id = ? AND m.stat_type = ?
@@ -262,7 +263,12 @@ async function submitMoveForStatTx(connection, match, round, playerId, cardId, c
 }
 
 // Fetches all submitted moves for a battle round.
-async function getRoundMoves(roundId) {
+function buildCardImageUrl(req, imagePath) {
+  return req?.buildFileUrl ? req.buildFileUrl(imagePath) : imagePath || null;
+}
+
+// Fetches all submitted moves for a battle round.
+async function getRoundMoves(roundId, req = null) {
   const [moves] = await db.execute(
     `SELECT
       m.id,
@@ -279,18 +285,22 @@ async function getRoundMoves(roundId) {
       m.did_decay_apply,
       m.submission_order,
       c.name AS card_name,
-      c.element_type
+      c.element_type,
+      c.image_path
      FROM battle_round_moves m
      JOIN cards c ON c.id = m.card_id
      WHERE m.round_id = ?
      ORDER BY m.submission_order ASC`,
     [roundId]
   );
-  return moves;
+  return moves.map((move) => ({
+    ...move,
+    image_url: buildCardImageUrl(req, move.image_path)
+  }));
 }
 
 // Builds the current match, round, and submitted move summary.
-async function getMatchSummary(matchId) {
+async function getMatchSummary(matchId, req = null) {
   const [matchRows] = await db.execute(
     `SELECT
       bm.id,
@@ -336,7 +346,7 @@ async function getMatchSummary(matchId) {
   );
 
   const currentRound = roundRows[0] || null;
-  const submittedMoves = currentRound ? await getRoundMoves(currentRound.id) : [];
+  const submittedMoves = currentRound ? await getRoundMoves(currentRound.id, req) : [];
 
   return {
     match,
@@ -470,7 +480,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
       connection.release();
       connection = null;
 
-      const existingSummary = await getMatchSummary(existingMatch.id);
+      const existingSummary = await getMatchSummary(existingMatch.id, req);
       if (existingSummary?.match?.status === "waiting") {
         scheduleBotFallback(existingMatch.id, playerId);
         const matchedWithRealOpponent =
@@ -486,7 +496,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
         });
       }
 
-      const matchSummary = await getMatchSummary(existingMatch.id);
+      const matchSummary = await getMatchSummary(existingMatch.id, req);
       return res.status(200).json({
         success: true,
         message: "You already have an active or waiting match.",
@@ -530,7 +540,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
 
     if (joinedMatchId) {
       await connection.commit();
-      const matchSummary = await getMatchSummary(joinedMatchId);
+      const matchSummary = await getMatchSummary(joinedMatchId, req);
       return res.status(200).json({
         success: true,
         message: "Joined open match successfully.",
@@ -559,7 +569,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
     connection = null;
 
     scheduleBotFallback(createdMatchId, playerId);
-    const matchSummary = await getMatchSummary(createdMatchId);
+    const matchSummary = await getMatchSummary(createdMatchId, req);
     return res.status(201).json({
       success: true,
       message: "Open match created. Looking for opponent.",
@@ -678,7 +688,7 @@ router.get("/match/:id", authenticateToken, async (req, res) => {
       });
     }
 
-    let matchSummary = await getMatchSummary(matchId);
+    let matchSummary = await getMatchSummary(matchId, req);
     if (!matchSummary) {
       return res.status(404).json({
         success: false,
@@ -701,7 +711,7 @@ router.get("/match/:id", authenticateToken, async (req, res) => {
       Number(match.waiting_elapsed_ms || 0) >= BOT_WAIT_MS
     ) {
       await attachBotIfMatchStillWaiting(matchId, playerId);
-      matchSummary = await getMatchSummary(matchId);
+      matchSummary = await getMatchSummary(matchId, req);
       match = matchSummary.match;
       currentRound = matchSummary.current_round;
     }
@@ -1085,6 +1095,7 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
           player_id: firstMove.player_id,
           card_id: firstMove.card_id,
           card_name: firstMove.card_name,
+          image_url: buildCardImageUrl(req, firstMove.image_path),
           base_value: Number(firstMove.base_value),
           rolled_value: Number(firstMove.rolled_value),
           decay_value: firstDecay,
@@ -1095,6 +1106,7 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
           player_id: secondMove.player_id,
           card_id: secondMove.card_id,
           card_name: secondMove.card_name,
+          image_url: buildCardImageUrl(req, secondMove.image_path),
           base_value: Number(secondMove.base_value),
           rolled_value: Number(secondMove.rolled_value),
           decay_value: secondDecay,

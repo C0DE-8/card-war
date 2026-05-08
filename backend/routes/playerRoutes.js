@@ -321,7 +321,7 @@ async function assignStarterDeck(connection, playerId) {
 }
 
 // Fetches the player's active deck and normalized deck cards.
-async function fetchActiveDeck(playerId) {
+async function fetchActiveDeck(playerId, req = null) {
   const [deckRows] = await db.execute(
     `SELECT id, name, is_active
      FROM player_decks
@@ -451,7 +451,7 @@ async function fetchActiveDeck(playerId) {
         image_path: card.image_path,
         image_filename: card.image_filename,
         image_mime_type: card.image_mime_type,
-        image_url: card.image_path ? `${card.image_path}` : null
+        image_url: req?.buildFileUrl ? req.buildFileUrl(card.image_path) : card.image_path || null
       }
     }))
   };
@@ -888,7 +888,7 @@ router.post("/deck/assign-starter", authenticateToken, async (req, res) => {
     await connection.commit();
 
     if (assignResult.alreadyExists) {
-      const activeDeck = await fetchActiveDeck(playerId);
+      const activeDeck = await fetchActiveDeck(playerId, req);
       return res.status(200).json({
         success: true,
         message: "Starter deck already assigned.",
@@ -896,7 +896,7 @@ router.post("/deck/assign-starter", authenticateToken, async (req, res) => {
       });
     }
 
-    const activeDeck = await fetchActiveDeck(playerId);
+    const activeDeck = await fetchActiveDeck(playerId, req);
     return res.status(201).json({
       success: true,
       message: "Starter deck assigned successfully.",
@@ -930,7 +930,7 @@ router.post("/deck/assign-starter", authenticateToken, async (req, res) => {
 router.get("/deck/active", authenticateToken, async (req, res) => {
   try {
     const playerId = req.user.id;
-    const activeDeck = await fetchActiveDeck(playerId);
+    const activeDeck = await fetchActiveDeck(playerId, req);
 
     if (!activeDeck) {
       return res.status(404).json({

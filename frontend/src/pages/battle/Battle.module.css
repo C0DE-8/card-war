@@ -935,11 +935,24 @@
   background: radial-gradient(circle, #d8f5ff, transparent 70%);
 }
 
-.revealStrip strong {
+.revealText {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  text-align: center;
+}
+
+.revealText small {
+  color: #a9d7ff;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.revealText strong {
   color: #ffffff;
   font-size: clamp(25px, 3.6vw, 42px);
   line-height: 1;
-  text-align: center;
   text-transform: uppercase;
 }
 

@@ -27,6 +27,11 @@ const getStatRange = (card, stat) => {
 
 const getMoveValue = (move) => move?.final_value ?? move?.rolled_value ?? 0;
 
+const wait = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 const TableCard = ({ card, move, hidden, label }) => (
   <article className={`${styles.tableCard} ${hidden ? styles.cardBack : ""}`}>
     {hidden ? (
@@ -38,7 +43,11 @@ const TableCard = ({ card, move, hidden, label }) => (
           <strong>{card?.name || move?.card_name || "Played Card"}</strong>
         </div>
         <div className={styles.tableCardArt}>
-          {card?.image_url ? <img src={card.image_url} alt="" /> : <ImageIcon size={34} />}
+          {card?.image_url || move?.image_url ? (
+            <img src={card?.image_url || move?.image_url} alt="" />
+          ) : (
+            <ImageIcon size={34} />
+          )}
         </div>
         <div className={styles.tableStats}>
           <span>P: {card?.effective_power_max ?? card?.power ?? "-"}</span>
@@ -76,6 +85,7 @@ export default function MatchPage() {
   const [activeDeck, setActiveDeck] = useState(null);
   const [result, setResult] = useState(null);
   const [lastPlay, setLastPlay] = useState(null);
+  const [revealPlay, setRevealPlay] = useState(null);
   const [loading, setLoading] = useState(true);
   const [playingCardId, setPlayingCardId] = useState(null);
 
@@ -137,13 +147,20 @@ export default function MatchPage() {
     return new Map(characterCards.map((card) => [Number(card.id), card]));
   }, [characterCards]);
 
+  const revealMoves = revealPlay?.played_cards || null;
+  const revealStat = revealPlay?.current_stat || currentStat;
   const currentStatMoves = moves.filter((move) => move.stat_type === currentStat);
-  const playerMove = currentStatMoves.find((move) => move.player_id === playerId);
-  const opponentMove = currentStatMoves.find((move) => move.player_id === opponentId);
+  const playerMove = revealMoves
+    ? revealMoves.find((move) => move.player_id === playerId)
+    : currentStatMoves.find((move) => move.player_id === playerId);
+  const opponentMove = revealMoves
+    ? revealMoves.find((move) => move.player_id === opponentId)
+    : currentStatMoves.find((move) => move.player_id === opponentId);
   const hasSubmittedCurrentStat = Boolean(playerMove);
   const bothRevealed = Boolean(playerMove && opponentMove);
   const matchFinished = match?.status === "finished";
   const wonMatch = result?.winner_player_id === playerId;
+  const isRevealPause = Boolean(revealPlay);
 
   const logItems = useMemo(() => {
     if (moves.length === 0) {
@@ -161,6 +178,11 @@ export default function MatchPage() {
       setPlayingCardId(cardId);
       const playResult = await playMatchCard(id, cardId);
       setLastPlay(playResult);
+      if (playResult?.played_cards?.length >= 2) {
+        setRevealPlay(playResult);
+        await wait(2200);
+        setRevealPlay(null);
+      }
       await loadBattle();
     } catch (error) {
       toast.error(error?.response?.data?.message || "Could not play that card.");
@@ -220,15 +242,20 @@ export default function MatchPage() {
 
             <div className={styles.revealStrip}>
               <span />
-              <strong>
-                {matchFinished
-                  ? wonMatch
-                    ? "Victory"
-                    : "Defeat"
-                  : bothRevealed
-                    ? `${statLabels[currentStat]} Revealed`
-                    : "Waiting For Reveal..."}
-              </strong>
+              <div className={styles.revealText}>
+                <small>
+                  Current Round {match?.current_round_number ?? 1} / {statLabels[revealStat] || revealStat}
+                </small>
+                <strong>
+                  {matchFinished
+                    ? wonMatch
+                      ? "Victory"
+                      : "Defeat"
+                    : bothRevealed
+                      ? "Cards Revealed"
+                      : "Choose A Card"}
+                </strong>
+              </div>
               <span />
             </div>
 
@@ -283,6 +310,7 @@ export default function MatchPage() {
                   selected={lastPlay?.played_cards?.some((played) => played.card_id === card.id)}
                   disabled={
                     playingCardId != null ||
+                    isRevealPause ||
                     hasSubmittedCurrentStat ||
                     currentStat === "finished" ||
                     matchFinished
