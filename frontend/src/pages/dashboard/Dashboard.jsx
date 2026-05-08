@@ -105,6 +105,10 @@ const Dashboard = () => {
       toast.success("Battle queue screen is next. Hooking up soon.");
       return;
     }
+    if (actionId === "my-cards") {
+      navigate("/my-cards");
+      return;
+    }
     toast("This module is ready for API integration.");
   };
 

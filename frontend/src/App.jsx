@@ -8,6 +8,7 @@ import AdminRoute from "./components/auth/AdminRoute";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import styles from "./App.module.css";
 import AdminCards from "./pages/admin/AdminCards";
+import MyCards from "./pages/cards/MyCards";
 
 function App() {
   return (
@@ -51,6 +52,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-cards"
+            element={
+              <ProtectedRoute>
+                <MyCards />
               </ProtectedRoute>
             }
           />

@@ -57,6 +57,153 @@ function getCardLevelDefaults(cardRow) {
   };
 }
 
+function normalizeOwnedCard(req, card) {
+  const normalizedCard = {
+    player_card_id: card.player_card_id,
+    card_id: card.card_id,
+    id: card.card_id,
+    quantity: Number(card.quantity ?? 0),
+    acquired_at: card.acquired_at,
+    name: card.name,
+    type: card.type,
+    element_type: card.element_type,
+    cost: card.cost,
+    description: card.description,
+    is_active: !!card.is_active,
+    rarity_id: card.rarity_id,
+    rarity_name: card.rarity_name,
+    rarity_color: card.rarity_color,
+    image_path: card.image_path,
+    image_filename: card.image_filename,
+    image_mime_type: card.image_mime_type,
+    image_url: req.buildFileUrl(card.image_path)
+  };
+
+  if (card.type === "character") {
+    const defaults = getCardLevelDefaults(card);
+    const currentLevel = Number(card.current_level);
+    const resolvedLevel =
+      Number.isInteger(currentLevel) && currentLevel > 0
+        ? currentLevel
+        : defaults.base_card_level;
+
+    const progress = {
+      power_min_bonus: card.power_min_bonus,
+      power_max_bonus: card.power_max_bonus,
+      magic_min_bonus: card.magic_min_bonus,
+      magic_max_bonus: card.magic_max_bonus,
+      skill_min_bonus: card.skill_min_bonus,
+      skill_max_bonus: card.skill_max_bonus
+    };
+
+    const powerRange = getEffectiveRange(card, progress, "power");
+    const magicRange = getEffectiveRange(card, progress, "magic");
+    const skillRange = getEffectiveRange(card, progress, "skill");
+
+    return {
+      ...normalizedCard,
+      player_card_progress_id: card.player_card_progress_id ?? null,
+      current_level: resolvedLevel,
+      upgrade_count: Number(card.upgrade_count ?? 0),
+      base_card_level: defaults.base_card_level,
+      card_level_cap: defaults.card_level_cap,
+      can_upgrade: resolvedLevel < defaults.card_level_cap,
+      power_min: powerRange.baseMin,
+      power_max: powerRange.baseMax,
+      effective_power_min: powerRange.effectiveMin,
+      effective_power_max: powerRange.effectiveMax,
+      magic_min: magicRange.baseMin,
+      magic_max: magicRange.baseMax,
+      effective_magic_min: magicRange.effectiveMin,
+      effective_magic_max: magicRange.effectiveMax,
+      skill_min: skillRange.baseMin,
+      skill_max: skillRange.baseMax,
+      effective_skill_min: skillRange.effectiveMin,
+      effective_skill_max: skillRange.effectiveMax,
+      power: powerRange.effectiveMax,
+      magic: magicRange.effectiveMax,
+      skill: skillRange.effectiveMax,
+      progress: {
+        power_min_bonus: Number(card.power_min_bonus ?? 0),
+        power_max_bonus: Number(card.power_max_bonus ?? 0),
+        magic_min_bonus: Number(card.magic_min_bonus ?? 0),
+        magic_max_bonus: Number(card.magic_max_bonus ?? 0),
+        skill_min_bonus: Number(card.skill_min_bonus ?? 0),
+        skill_max_bonus: Number(card.skill_max_bonus ?? 0),
+        total_upgrade_spent_coins: Number(card.total_upgrade_spent_coins ?? 0),
+        total_upgrade_spent_gems: Number(card.total_upgrade_spent_gems ?? 0),
+        last_upgraded_at: card.last_upgraded_at ?? null
+      }
+    };
+  }
+
+  return {
+    ...normalizedCard,
+    effect: card.effect,
+    value: card.value,
+    power: card.power,
+    magic: card.magic,
+    skill: card.skill
+  };
+}
+
+function getOwnedCardsQuery({ byPlayerCardId = false } = {}) {
+  return `
+    SELECT
+      pc.id AS player_card_id,
+      pc.card_id,
+      pc.quantity,
+      pc.acquired_at,
+      c.name,
+      c.type,
+      c.element_type,
+      c.power,
+      c.magic,
+      c.skill,
+      c.base_card_level,
+      c.card_level_cap,
+      c.power_min,
+      c.power_max,
+      c.magic_min,
+      c.magic_max,
+      c.skill_min,
+      c.skill_max,
+      c.cost,
+      c.effect,
+      c.value,
+      c.description,
+      c.is_active,
+      c.image_path,
+      c.image_filename,
+      c.image_mime_type,
+      pcp.id AS player_card_progress_id,
+      pcp.current_level,
+      pcp.upgrade_count,
+      pcp.power_min_bonus,
+      pcp.power_max_bonus,
+      pcp.magic_min_bonus,
+      pcp.magic_max_bonus,
+      pcp.skill_min_bonus,
+      pcp.skill_max_bonus,
+      pcp.total_upgrade_spent_coins,
+      pcp.total_upgrade_spent_gems,
+      pcp.last_upgraded_at,
+      r.id AS rarity_id,
+      r.name AS rarity_name,
+      r.color AS rarity_color
+    FROM player_cards pc
+    JOIN cards c ON c.id = pc.card_id
+    JOIN rarities r ON r.id = c.rarity_id
+    LEFT JOIN player_card_progress pcp
+      ON pcp.player_card_id = pc.id
+     AND pcp.player_id = pc.player_id
+     AND pcp.card_id = pc.card_id
+    WHERE pc.player_id = ?
+      ${byPlayerCardId ? "AND pc.id = ?" : ""}
+    ORDER BY pc.acquired_at DESC, pc.id DESC
+  `;
+}
+
 /**
  * GET /api/players/profile
  * Get logged-in player profile
@@ -331,6 +478,63 @@ function getUpgradeIncrements(nextLevel) {
 
   return { minIncrease: 1, maxIncrease: 2 };
 }
+
+router.get("/cards", authenticateToken, async (req, res) => {
+  try {
+    const playerId = req.user.id;
+
+    const [cards] = await db.execute(getOwnedCardsQuery(), [playerId]);
+
+    return res.status(200).json({
+      success: true,
+      count: cards.length,
+      cards: cards.map((card) => normalizeOwnedCard(req, card))
+    });
+  } catch (error) {
+    console.error("Fetch player cards error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching player cards."
+    });
+  }
+});
+
+router.get("/cards/:playerCardId", authenticateToken, async (req, res) => {
+  try {
+    const playerId = req.user.id;
+    const playerCardId = Number(req.params.playerCardId);
+
+    if (!playerCardId || Number.isNaN(playerCardId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid playerCardId is required."
+      });
+    }
+
+    const [cards] = await db.execute(getOwnedCardsQuery({ byPlayerCardId: true }), [
+      playerId,
+      playerCardId
+    ]);
+
+    if (cards.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Player card not found."
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      card: normalizeOwnedCard(req, cards[0])
+    });
+  } catch (error) {
+    console.error("Fetch player card by ID error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching player card."
+    });
+  }
+});
 
 router.post("/cards/:playerCardId/upgrade", authenticateToken, async (req, res) => {
   let connection;
