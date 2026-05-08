@@ -14,7 +14,7 @@ const {
 
 const router = express.Router();
 
-// POST /api/admin/cards/create
+// Creates a new admin-managed character or ability card.
 router.post(
   "/cards/create",
   authenticateToken,
@@ -304,7 +304,7 @@ router.post(
   }
 );
 
-// PUT /api/admin/cards/:id
+// Updates an existing admin-managed card and optional image metadata.
 router.put(
   "/cards/:id",
   authenticateToken,
@@ -642,7 +642,7 @@ router.put(
   }
 );
 
-// DELETE /api/admin/cards/:id
+// Deactivates an admin-managed card without removing its row.
 router.delete("/cards/:id", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const cardId = Number(req.params.id);
@@ -686,7 +686,7 @@ router.delete("/cards/:id", authenticateToken, requireAdmin, async (req, res) =>
   }
 });
 
-// GET /api/admin/rarities
+// Lists card rarities available to admin card forms.
 router.get("/rarities", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.execute(
@@ -706,7 +706,7 @@ router.get("/rarities", authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// GET /api/admin/cards
+// Lists all admin-managed cards with rarity and image data.
 router.get("/cards", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const [cards] = await db.execute(
@@ -760,7 +760,7 @@ router.get("/cards", authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// GET /api/admin/cards/:id
+// Returns one admin-managed card by card id.
 router.get("/cards/:id", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const cardId = Number(req.params.id);

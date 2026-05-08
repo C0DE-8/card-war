@@ -5,11 +5,13 @@ const moment = require("moment");
 
 const router = express.Router();
 
+// Converts incoming values to numbers with a safe fallback.
 function toNumber(value, fallback = 0) {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : fallback;
 }
 
+// Resolves a card stat's base min and max range.
 function getBaseRange(cardRow, statType) {
   const fixedStat = toNumber(cardRow?.[statType], 0);
   const baseMinRaw = cardRow?.[`${statType}_min`];
@@ -28,6 +30,7 @@ function getBaseRange(cardRow, statType) {
   return { baseMin, baseMax, fixedStat };
 }
 
+// Calculates a card stat range after player upgrade bonuses.
 function getEffectiveRange(cardRow, progressRow, statType) {
   const { baseMin, baseMax, fixedStat } = getBaseRange(cardRow, statType);
 
@@ -47,6 +50,7 @@ function getEffectiveRange(cardRow, progressRow, statType) {
   return { baseMin, baseMax, effectiveMin, effectiveMax };
 }
 
+// Reads card level defaults with sane fallbacks.
 function getCardLevelDefaults(cardRow) {
   const baseLevel = Number(cardRow?.base_card_level);
   const capLevel = Number(cardRow?.card_level_cap);
@@ -57,6 +61,7 @@ function getCardLevelDefaults(cardRow) {
   };
 }
 
+// Formats an owned card row for player-facing API responses.
 function normalizeOwnedCard(req, card) {
   const normalizedCard = {
     player_card_id: card.player_card_id,
@@ -147,6 +152,7 @@ function normalizeOwnedCard(req, card) {
   };
 }
 
+// Builds the owned card query, optionally filtered by player card id.
 function getOwnedCardsQuery({ byPlayerCardId = false } = {}) {
   return `
     SELECT
@@ -204,10 +210,7 @@ function getOwnedCardsQuery({ byPlayerCardId = false } = {}) {
   `;
 }
 
-/**
- * GET /api/players/profile
- * Get logged-in player profile
- */
+// Returns the authenticated player's profile details.
 router.get("/profile", authenticateToken, async (req, res) => {
   try {
     const playerId = req.user.id;
@@ -261,6 +264,7 @@ router.get("/profile", authenticateToken, async (req, res) => {
   }
 });
 
+// Creates a starter deck for a player when one does not already exist.
 async function assignStarterDeck(connection, playerId) {
   const [existingDecks] = await connection.execute(
     `SELECT id, name, is_active
@@ -316,6 +320,7 @@ async function assignStarterDeck(connection, playerId) {
   return { alreadyExists: false, deckId };
 }
 
+// Fetches the player's active deck and normalized deck cards.
 async function fetchActiveDeck(playerId) {
   const [deckRows] = await db.execute(
     `SELECT id, name, is_active
@@ -452,6 +457,7 @@ async function fetchActiveDeck(playerId) {
   };
 }
 
+// Calculates the coin cost for upgrading to the next card level.
 function getUpgradeCostCoins(nextLevel) {
   const level = Number(nextLevel);
   if (!Number.isInteger(level) || level < 1) {
@@ -460,6 +466,7 @@ function getUpgradeCostCoins(nextLevel) {
   return level * 200;
 }
 
+// Calculates stat bonus increments for a card upgrade level.
 function getUpgradeIncrements(nextLevel) {
   const level = Number(nextLevel);
   if (!Number.isInteger(level) || level < 1) {
@@ -479,6 +486,7 @@ function getUpgradeIncrements(nextLevel) {
   return { minIncrease: 1, maxIncrease: 2 };
 }
 
+// Returns all cards owned by the authenticated player.
 router.get("/cards", authenticateToken, async (req, res) => {
   try {
     const playerId = req.user.id;
@@ -499,6 +507,7 @@ router.get("/cards", authenticateToken, async (req, res) => {
   }
 });
 
+// Returns one owned player card by player card id.
 router.get("/cards/:playerCardId", authenticateToken, async (req, res) => {
   try {
     const playerId = req.user.id;
@@ -536,6 +545,7 @@ router.get("/cards/:playerCardId", authenticateToken, async (req, res) => {
   }
 });
 
+// Upgrades an owned character card and charges player coins.
 router.post("/cards/:playerCardId/upgrade", authenticateToken, async (req, res) => {
   let connection;
 
@@ -864,6 +874,7 @@ router.post("/cards/:playerCardId/upgrade", authenticateToken, async (req, res) 
   }
 });
 
+// Assigns the authenticated player a starter deck if needed.
 router.post("/deck/assign-starter", authenticateToken, async (req, res) => {
   const playerId = req.user.id;
   let connection;
@@ -915,6 +926,7 @@ router.post("/deck/assign-starter", authenticateToken, async (req, res) => {
   }
 });
 
+// Returns the authenticated player's active deck.
 router.get("/deck/active", authenticateToken, async (req, res) => {
   try {
     const playerId = req.user.id;

@@ -5,6 +5,7 @@ const db = require("../config/db");
 
 const router = express.Router();
 
+// Builds the public player payload returned after auth actions.
 function buildPlayerPayload(player) {
   return {
     id: player.id,
@@ -21,6 +22,7 @@ function buildPlayerPayload(player) {
   };
 }
 
+// Assigns a starter deck and starter cards during registration.
 async function assignStarterDeckOnRegister(connection, playerId) {
   const [existingDeckRows] = await connection.execute(
     `SELECT id
@@ -81,7 +83,7 @@ async function assignStarterDeckOnRegister(connection, playerId) {
   };
 }
 
-// POST /api/auth/register
+// Registers a new player account and creates its starter deck.
 router.post("/register", async (req, res) => {
   let connection;
 
@@ -210,7 +212,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// POST /api/auth/login
+// Authenticates a player and returns a signed session token.
 router.post("/login", async (req, res) => {
     try {
       const { identifier, password } = req.body;

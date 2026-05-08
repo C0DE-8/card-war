@@ -1,8 +1,22 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
+import {
+  BookOpen,
+  CalendarClock,
+  Crown,
+  Mail,
+  Shield,
+  Swords,
+  Trophy,
+  UserCheck,
+  Users,
+  WalletCards
+} from "lucide-react";
 import api from "../../api/axios";
+import { getPlayerCards } from "../../api/playerCards";
 import styles from "./Dashboard.module.css";
+import DashboardTopBar from "./DashboardTopBar";
 import VisualStage from "./VisualStage";
 
 const Dashboard = () => {
@@ -10,25 +24,48 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState("");
   const [player, setPlayer] = useState(null);
+  const [cards, setCards] = useState([]);
+  const [activeDeck, setActiveDeck] = useState(null);
+  const [battleLoading, setBattleLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const response = await api.get("/players/profile");
-        if (!cancelled) {
-          setPlayer(response.data?.player || null);
-          setProfileError("");
+        const [profileResult, cardsResult, deckResult] = await Promise.allSettled([
+          api.get("/players/profile"),
+          getPlayerCards(),
+          api.get("/players/deck/active")
+        ]);
+
+        if (cancelled) {
+          return;
         }
-      } catch (e) {
-        if (!cancelled) {
+
+        if (profileResult.status === "fulfilled") {
+          setPlayer(profileResult.value.data?.player || null);
+          setProfileError("");
+        } else {
+          const e = profileResult.reason;
           const message =
             e?.response?.data?.message ||
             e?.response?.data?.error ||
             "Could not load your profile data.";
           setProfileError(message);
           setPlayer(null);
+        }
+
+        if (cardsResult.status === "fulfilled") {
+          setCards(cardsResult.value?.cards || []);
+        } else {
+          setCards([]);
+        }
+
+        if (deckResult.status === "fulfilled") {
+          setActiveDeck(deckResult.value.data?.deck || null);
+        } else {
+          setActiveDeck(null);
         }
       } finally {
         if (!cancelled) {
@@ -42,74 +79,59 @@ const Dashboard = () => {
     };
   }, []);
 
+  const profileStats = useMemo(
+    () => [
+      { label: "Wins", value: player?.wins ?? 0, icon: Trophy },
+      { label: "Losses", value: player?.losses ?? 0, icon: Shield },
+      { label: "Owned Cards", value: cards.length, icon: WalletCards },
+      { label: "Deck Cards", value: activeDeck?.cards?.length ?? 0, icon: BookOpen }
+    ],
+    [activeDeck, cards.length, player]
+  );
+
+  const bottomNav = useMemo(
+    () => [
+      { id: "cards", label: "Cards", icon: WalletCards, count: cards.length },
+      { id: "deck", label: "Deck", icon: BookOpen, count: activeDeck?.cards?.length ?? 0 },
+      { id: "battle", label: "Battle", icon: Swords, active: true },
+      { id: "profile", label: "Profile", icon: Users },
+      { id: "rank", label: "RP", icon: Crown, count: player?.rp ?? 0 }
+    ],
+    [activeDeck, cards.length, player]
+  );
+
   const handleLogout = () => {
     localStorage.removeItem("token");
     toast.success("Logged out successfully");
     navigate("/login");
   };
 
-  const quickActions = useMemo(
-    () => [
-      { id: "start-battle", label: "Start Battle" },
-      { id: "my-cards", label: "My Cards" },
-      { id: "deck-builder", label: "Deck Builder" },
-      { id: "rewards", label: "Rewards" },
-      { id: "profile", label: "Profile" }
-    ],
-    []
-  );
-
-  const recentActivity = useMemo(
-    () => [
-      { id: "a1", text: "Logged in and synced your latest profile data." },
-      { id: "a2", text: "Starter deck remains active and battle-ready." },
-      { id: "a3", text: "Season queue is open for ranked battle." }
-    ],
-    []
-  );
-
-  const leaderboard = useMemo(
-    () => [
-      { id: 1, username: "light", level: 24, rp: 487 },
-      { id: 2, username: "flame", level: 22, rp: 462 },
-      { id: 3, username: "storm", level: 20, rp: 439 }
-    ],
-    []
-  );
-
-  const gameTips = useMemo(
-    () => [
-      "Balance your deck costs so you can answer both aggressive and control lines.",
-      "Use element counters for an edge, but remember advantage never guarantees a win.",
-      "Avoid overusing one card in the same match to reduce decay pressure."
-    ],
-    []
-  );
-
-  const playerStats = useMemo(
-    () => [
-      { label: "Username", value: player?.username || "-" },
-      { label: "Level", value: player?.level ?? "-" },
-      { label: "EXP", value: player?.exp ?? "-" },
-      { label: "RP", value: player?.rp ?? "-" },
-      { label: "Coins", value: player?.coins ?? "-" },
-      { label: "Gems", value: player?.gems ?? "-" },
-      { label: "Wins", value: player?.wins ?? "-" },
-      { label: "Losses", value: player?.losses ?? "-" }
-    ],
-    [player]
-  );
-
-  const handleAction = (actionId) => {
-    if (actionId === "start-battle") {
-      toast.success("Battle queue screen is next. Hooking up soon.");
-      return;
+  const handleBattle = async () => {
+    try {
+      setBattleLoading(true);
+      const response = await api.post("/play/match/create");
+      const message = response.data?.message || "Match created.";
+      const matchId = response.data?.match?.id || response.data?.match_id;
+      toast.success(matchId ? `${message} Match #${matchId}` : message);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Could not create match.");
+    } finally {
+      setBattleLoading(false);
     }
-    if (actionId === "my-cards") {
+  };
+
+  const handleNav = (id) => {
+    if (id === "cards" || id === "deck") {
       navigate("/my-cards");
       return;
     }
-    toast("This module is ready for API integration.");
+
+    if (id === "battle") {
+      handleBattle();
+      return;
+    }
+
+    return;
   };
 
   if (loading) {
@@ -125,144 +147,119 @@ const Dashboard = () => {
 
   return (
     <div className={styles.shell}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.brand}>Card War Command</p>
-          <h1 className={styles.title}>Welcome back, {player?.username || "Player"}</h1>
-          <p className={styles.subtitle}>Your hub for battles, cards, rewards, and progression.</p>
-        </div>
-        <button className={styles.logout} type="button" onClick={handleLogout}>
-          Logout
-        </button>
-      </header>
+      <div className={styles.dashboard}>
+        <DashboardTopBar player={player} onLogout={handleLogout} />
 
-      {profileError && (
-        <div className={styles.noticeError}>
-          {profileError}
-        </div>
-      )}
+        {profileError && <div className={styles.noticeError}>{profileError}</div>}
 
-      <div className={styles.layout}>
-        <main className={styles.main}>
-          <section className={styles.hero}>
-            <div className={styles.heroCopy}>
-              <p className={styles.sectionLabel}>Main Hub</p>
-              <h2 className={styles.heroTitle}>Battle Ready</h2>
-              <p className={styles.heroText}>
-                Build your deck, queue your next match, and climb the Card War leaderboard.
-              </p>
-            </div>
-            <VisualStage />
-          </section>
-
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <h3>Player Summary</h3>
-            </div>
-            {player ? (
-              <div className={styles.statGrid}>
-                {playerStats.map((stat) => (
-                  <article key={stat.label} className={styles.statCard}>
-                    <p className={styles.statLabel}>{stat.label}</p>
-                    <p className={styles.statValue}>{stat.value}</p>
-                  </article>
-                ))}
+        <main className={styles.lobby}>
+          <section className={styles.profileBanner} aria-label="Player profile">
+            <div className={styles.bannerArt}>
+              <div className={styles.kingHead}>
+                <span />
               </div>
-            ) : (
-              <div className={styles.emptyState}>No player profile found for this account.</div>
-            )}
-          </section>
-
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <h3>Quick Actions</h3>
+              <div className={styles.bannerBlocks}>
+                <span />
+                <span />
+                <span />
+              </div>
             </div>
-            <div className={styles.actionGrid}>
-              {quickActions.map((action) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  className={styles.actionBtn}
-                  onClick={() => handleAction(action.id)}
-                >
-                  {action.label}
-                </button>
-              ))}
+            <div className={styles.playerPlate}>
+              <div>
+                <h1>{player?.username || "-"}</h1>
+                <p>{player?.email || "-"}</p>
+              </div>
+              <div className={styles.trophyPlate}>
+                <Trophy size={34} />
+                <strong>{player?.rp ?? 0}</strong>
+              </div>
             </div>
           </section>
 
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <h3>Recent Activity</h3>
+          <section className={styles.rightRail} aria-label="Profile stats">
+            <div className={styles.statStack}>
+              {profileStats.map((stat) => {
+                const Icon = stat.icon;
+                return (
+                  <article key={stat.label} className={styles.statTile}>
+                    <Icon size={26} />
+                    <span>{stat.label}</span>
+                    <strong>{stat.value}</strong>
+                  </article>
+                );
+              })}
             </div>
-            {recentActivity.length > 0 ? (
-              <ul className={styles.activityList}>
-                {recentActivity.map((item) => (
-                  <li key={item.id}>{item.text}</li>
-                ))}
-              </ul>
-            ) : (
-              <div className={styles.emptyState}>No activity yet. Start your first battle!</div>
-            )}
+          </section>
+
+          <VisualStage />
+
+          <section className={styles.eventPanel} aria-label="Backend profile details">
+            <div className={styles.eventTitle}>
+              <UserCheck size={22} />
+              <strong>Profile</strong>
+            </div>
+            <div className={styles.profileDetailGrid}>
+              <span>
+                <UserCheck size={18} />
+                ID {player?.id ?? "-"}
+              </span>
+              <span>
+                <Mail size={18} />
+                {player?.email || "-"}
+              </span>
+              <span>
+                <CalendarClock size={18} />
+                Created {player?.created_at || "-"}
+              </span>
+              <span>
+                <CalendarClock size={18} />
+                Updated {player?.updated_at || "-"}
+              </span>
+              <span>
+                <Shield size={18} />
+                {player?.is_admin ? "Admin" : "Player"}
+              </span>
+            </div>
+          </section>
+
+          <section className={styles.battleDock} aria-label="Battle controls">
+            <button type="button" className={styles.deckButton} onClick={() => navigate("/my-cards")}>
+              <WalletCards size={48} />
+              <span>{cards.length}</span>
+            </button>
+            <button
+              type="button"
+              className={styles.battleButton}
+              onClick={handleBattle}
+              disabled={battleLoading}
+            >
+              {battleLoading ? "Matching" : "Battle"}
+              <span>{activeDeck?.name || "No active deck"}</span>
+            </button>
+            <button type="button" className={styles.trophyButton}>
+              <Trophy size={54} />
+              <span>{player?.rp ?? 0}</span>
+            </button>
           </section>
         </main>
 
-        <aside className={styles.side}>
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <h3>Daily Loot</h3>
-            </div>
-            <div className={styles.lootCard}>
-              <p className={styles.lootTitle}>Day 3 Reward Chest</p>
-              <p className={styles.lootText}>Claim window opens in 04:12:09.</p>
-              <button type="button" className={styles.claimBtn}>
-                Claim Soon
+        <nav className={styles.bottomNav} aria-label="Main navigation">
+          {bottomNav.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`${styles.navItem} ${item.active ? styles.navItemActive : ""}`}
+                onClick={() => handleNav(item.id)}
+              >
+                {item.count ? <span className={styles.navBadge}>{item.count}</span> : null}
+                <Icon size={34} />
+                <span>{item.label}</span>
               </button>
-            </div>
-          </section>
-
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <h3>Top Players</h3>
-            </div>
-            <div className={styles.leaderboard}>
-              {leaderboard.map((entry) => (
-                <article key={entry.id} className={styles.leaderCard}>
-                  <p className={styles.leaderRank}>#{entry.id}</p>
-                  <div>
-                    <p className={styles.leaderName}>{entry.username}</p>
-                    <p className={styles.leaderMeta}>Lv.{entry.level} · {entry.rp} RP</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <h3>Game Tips</h3>
-            </div>
-            <ul className={styles.tipList}>
-              {gameTips.map((tip) => (
-                <li key={tip}>
-                  {tip}
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <h3>System</h3>
-            </div>
-            <div className={styles.systemCard}>
-              <p>Dashboard is now ready for live battle, deck, and rewards APIs.</p>
-              <button type="button" className={styles.profileBtn} onClick={() => navigate("/dashboard")}>
-                Refresh Hub
-              </button>
-            </div>
-          </section>
-        </aside>
+            );
+          })}
+        </nav>
       </div>
     </div>
   );

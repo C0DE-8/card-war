@@ -7,6 +7,7 @@ const router = express.Router();
 const STAT_SEQUENCE = ["power", "magic", "skill"];
 const ROUND_TARGET = 2;
 
+// Rolls an integer within a card stat range.
 function rollRandomInt(minValue, maxValue) {
   const min = Number(minValue);
   const max = Number(maxValue);
@@ -25,6 +26,7 @@ function rollRandomInt(minValue, maxValue) {
   return Math.floor(Math.random() * (high - low + 1)) + low;
 }
 
+// Calculates the effective stat range for battle card rolls.
 function computeEffectiveStatRange(cardRow, progressRow, statType) {
   const fixedStat = Number(cardRow?.[statType] ?? 0);
   const baseMinRaw = cardRow?.[`${statType}_min`];
@@ -60,6 +62,7 @@ function computeEffectiveStatRange(cardRow, progressRow, statType) {
   };
 }
 
+// Fetches the player's active deck outside a transaction.
 async function getActiveDeckByPlayerId(playerId) {
   const [rows] = await db.execute(
     `SELECT id, player_id, name, is_active
@@ -72,6 +75,7 @@ async function getActiveDeckByPlayerId(playerId) {
   return rows[0] || null;
 }
 
+// Fetches the player's active deck inside an existing transaction.
 async function getActiveDeckByPlayerIdTx(connection, playerId) {
   const [rows] = await connection.execute(
     `SELECT id, player_id, name, is_active
@@ -84,6 +88,7 @@ async function getActiveDeckByPlayerIdTx(connection, playerId) {
   return rows[0] || null;
 }
 
+// Finds any unfinished battle match already involving the player.
 async function getExistingUnfinishedMatchByPlayerIdTx(connection, playerId) {
   const [rows] = await connection.execute(
     `SELECT id
@@ -97,6 +102,7 @@ async function getExistingUnfinishedMatchByPlayerIdTx(connection, playerId) {
   return rows[0] || null;
 }
 
+// Finds the oldest waiting match that the player can join.
 async function getOldestWaitingMatchTx(connection, playerId) {
   const [rows] = await connection.execute(
     `SELECT id
@@ -111,6 +117,7 @@ async function getOldestWaitingMatchTx(connection, playerId) {
   return rows[0] || null;
 }
 
+// Ensures a joined battle match has its first round row.
 async function ensureRoundOneExistsTx(connection, matchId) {
   await connection.execute(
     `INSERT INTO battle_rounds (match_id, round_number, status)
@@ -120,6 +127,7 @@ async function ensureRoundOneExistsTx(connection, matchId) {
   );
 }
 
+// Fetches all submitted moves for a battle round.
 async function getRoundMoves(roundId) {
   const [moves] = await db.execute(
     `SELECT
@@ -147,6 +155,7 @@ async function getRoundMoves(roundId) {
   return moves;
 }
 
+// Builds the current match, round, and submitted move summary.
 async function getMatchSummary(matchId) {
   const [matchRows] = await db.execute(
     `SELECT
@@ -201,6 +210,7 @@ async function getMatchSummary(matchId) {
   };
 }
 
+// Returns the next stat clash after the current stat.
 function getNextStat(statType) {
   const idx = STAT_SEQUENCE.indexOf(statType);
   if (idx === -1 || idx === STAT_SEQUENCE.length - 1) {
@@ -209,6 +219,7 @@ function getNextStat(statType) {
   return STAT_SEQUENCE[idx + 1];
 }
 
+// Orders tied battle moves by cost, advantage, decay, order, and player id.
 function compareTieBreaker(a, b) {
   if (a.costValue !== b.costValue) {
     return a.costValue < b.costValue ? -1 : 1;
@@ -225,6 +236,7 @@ function compareTieBreaker(a, b) {
   return a.playerId < b.playerId ? -1 : 1;
 }
 
+// Advances rounds or finalizes a match when a player reaches the target.
 async function finalizeMatchIfNeeded(connection, matchId) {
   const [matchRows] = await connection.execute(
     `SELECT *
@@ -298,6 +310,7 @@ async function finalizeMatchIfNeeded(connection, matchId) {
   };
 }
 
+// Creates or joins a battle match for the authenticated player.
 router.post("/match/create", authenticateToken, async (req, res) => {
   let connection;
 
@@ -407,6 +420,7 @@ router.post("/match/create", authenticateToken, async (req, res) => {
   }
 });
 
+// Returns the current state of a battle match.
 router.get("/match/:id", authenticateToken, async (req, res) => {
   try {
     const matchId = Number(req.params.id);
@@ -461,6 +475,7 @@ router.get("/match/:id", authenticateToken, async (req, res) => {
   }
 });
 
+// Submits a card play for the current stat clash in a match.
 router.post("/match/:id/play", authenticateToken, async (req, res) => {
   let connection;
 
@@ -937,6 +952,7 @@ router.post("/match/:id/play", authenticateToken, async (req, res) => {
   }
 });
 
+// Returns the final result and round summary for a finished match.
 router.get("/match/:id/result", authenticateToken, async (req, res) => {
   try {
     const matchId = Number(req.params.id);
